@@ -2,10 +2,23 @@ pragma solidity 0.4.21;
 
 import { ERC20 as Token } from "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import { SafeMath } from "openzeppelin-solidity/contracts/math/SafeMath.sol";
-
 import { ExchangeHandler } from "./ExchangeHandler.sol";
 
-import { ZeroExExchange } from './ZeroExExchange.sol';
+interface ZeroExExchange {
+    function fillOrder(
+        address[5] orderAddresses,
+        uint[6] orderValues,
+        uint fillTakerTokenAmount,
+        bool shouldThrowOnInsufficientBalanceOrAllowance,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public returns (uint filledTakerTokenAmount);
+
+    function TOKEN_TRANSFER_PROXY_CONTRACT() public returns (address);
+    function getOrderHash(address[5] orderAddresses, uint[6] orderValues) public constant returns (bytes32);
+    function getUnavailableTakerTokenAmount(bytes32 orderHash) public constant returns (uint);
+}
 
 interface DepositToken {
     function deposit() external payable;
