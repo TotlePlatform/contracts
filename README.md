@@ -32,10 +32,15 @@ Our key focus for the development of our smart contract platform revolves around
 Under the current payload design we are somewhat limited by what exchanges we are able to support for each DEX order. With the upcoming changes in version 0.5.0 of Solidity, we hope to utilize updates to the ABI encoder, allowing nesting of dynamic data types such as structs and arrays.
 
 ## 3. Contract Addresses
-- TotlePrimary - [0xd94c60e2793ad587400d86e4d6fd9c874f0f79ef](https://etherscan.io/address/0xd94c60e2793ad587400d86e4d6fd9c874f0f79ef)
-- TokenTransferProxy - [0xAd5aa494bcd729b8EA728f581AAdE049c4EC4E9D](https://etherscan.io/address/0xad5aa494bcd729b8ea728f581aade049c4ec4e9d)
-- EtherDeltaHandler - [0x51111D922f035eFA8b3CbCeb4a770786e80aD6Ea](https://etherscan.io/address/0x51111d922f035efa8b3cbceb4a770786e80ad6ea)
-- KyberHandler - [0x70f51D971588005AEceb370768daC19BC28B61D6](https://etherscan.io/address/0x70f51d971588005aeceb370768dac19bc28b61d6)
-- BancorHandler - [0x15dEB30754baBE5C25f11B56d2e29aad19C9D4F8](https://etherscan.io/address/0x15deb30754babe5c25f11b56d2e29aad19c9d4f8)
-- ZeroXHandler - [0xbE7088029DEd190C0317d8b2Bd1b19BDca247679](https://etherscan.io/address/0xbe7088029ded190c0317d8b2bd1b19bdca247679)
-- AirSwapHandler - coming soon!
+- TotlePrimary - [0x476a0a98beaae3e7e451ccd46e50fb465ae540bb](https://etherscan.io/address/0x476a0a98beaae3e7e451ccd46e50fb465ae540bb)
+- TokenTransferProxy - [0x74758AcFcE059f503a7E6B0fC2c8737600f9F2c4](https://etherscan.io/address/0x74758AcFcE059f503a7E6B0fC2c8737600f9F2c4)
+- EtherDeltaHandler - [0xef781199d290080194b66146dc448e99e08d7daa](https://etherscan.io/address/0xef781199d290080194b66146dc448e99e08d7daa)
+- KyberHandler - [0x7f9eb892d0ce10ea52905d15bb618ff8d0c947d3](https://etherscan.io/address/0x7f9eb892d0ce10ea52905d15bb618ff8d0c947d3)
+- BancorHandler - [0x0a2631A499813Bb47De7490a4845AAbee8062b6F](https://etherscan.io/address/0x0a2631A499813Bb47De7490a4845AAbee8062b6F)
+- ZeroXHandler - [0x3Ad91E16d9b59A065650f65e864f1f5ffB0c1aF3](https://etherscan.io/address/0x3Ad91E16d9b59A065650f65e864f1f5ffB0c1aF3)
+- AirSwapHandler - [0xC4C713b1043c48808F72e375Aa061f547835C1B8](https://etherscan.io/address/0xC4C713b1043c48808F72e375Aa061f547835C1B8)
+- EthexHandler - [0x30f37f9189ECCeC4aA75DFa431531175251C4b06](https://etherscan.io/address/0x30f37f9189ECCeC4aA75DFa431531175251C4b06)
+- OasisHandler - [0x14a03814b7308D71DfE141CcC0e25E77b7AF5Cd6](https://etherscan.io/address/0x14a03814b7308D71DfE141CcC0e25E77b7AF5Cd6)
+- TokenStoreHandler - [0xe81b4c063F106be42b854D605f5d6738E161e44d](https://etherscan.io/address/0xe81b4c063F106be42b854D605f5d6738E161e44d)
+- UniswapHandler - [0x5c5316650F2C15BbE738F51D8e24A2A00ee63e25](https://etherscan.io/address/0x5c5316650F2C15BbE738F51D8e24A2A00ee63e25)
+- WeiDexHandler - [0x855a160c02b841e98d2ee84398be65cc472cab68](https://etherscan.io/address/0x855a160c02b841e98d2ee84398be65cc472cab68)

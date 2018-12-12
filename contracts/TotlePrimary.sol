@@ -1,319 +1,531 @@
-pragma solidity 0.4.21;
+pragma solidity 0.4.25;
+pragma experimental ABIEncoderV2;
 
-import { Ownable } from "openzeppelin-solidity/contracts/ownership/Ownable.sol";
-import { ERC20 as Token } from "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
-import { Math } from "openzeppelin-solidity/contracts/math/Math.sol";
-import { SafeMath } from "openzeppelin-solidity/contracts/math/SafeMath.sol";
+import "./lib/Withdrawable.sol";
+import "./lib/TokenTransferProxy.sol";
+import "./lib/Pausable.sol";
+import "./lib/SafeMath.sol";
+import "./lib/Utils.sol";
+import "./lib/ErrorReporter.sol";
+/* import "./lib/Logger.sol"; */
+import "./lib/ERC20SafeTransfer.sol";
+import "./exchange_handlers/ExchangeHandler.sol";
 
-import { ExchangeHandler } from "./ExchangeHandler.sol";
-import { TokenTransferProxy } from "./TokenTransferProxy.sol";
+/// @title The primary contract for Totle
+contract TotlePrimary is Withdrawable, Pausable {
 
-/// @title The primary contract for Totle Inc
-contract TotlePrimary is Ownable {
-    // Constants
-    uint256 public constant MAX_EXCHANGE_FEE_PERCENTAGE = 0.01 * 10**18; // 1%
-    bool constant BUY = false;
-    bool constant SELL = true;
+    /*
+    *   State Variables
+    */
 
-    // State variables
-    mapping(address => bool) public handlerWhitelist;
-    address tokenTransferProxy;
+    mapping(address => bool) public handlerWhitelistMap;
+    address[] public handlerWhitelistArray;
+
+    address public tokenTransferProxy;
+    ErrorReporter public errorReporter;
+    /* Logger public logger; */
+
+    /*
+    *   Types
+    */
 
     // Structs
-    struct Tokens {
-        address[] tokenAddresses;
-        bool[]    buyOrSell;
-        uint256[] amountToObtain;
-        uint256[] amountToGive;
+    struct Trade {
+        bool isSell;
+        address tokenAddress;
+        uint256 tokenAmount;
+        bool optionalTrade;
+        uint256 minimumExchangeRate;
+        uint256 minimumAcceptableTokenAmount;
+        Order[] orders;
     }
 
-    struct DEXOrders {
-        address[] tokenForOrder;
-        address[] exchanges;
-        address[8][] orderAddresses;
-        uint256[6][] orderValues;
-        uint256[] exchangeFees;
-        uint8[] v;
-        bytes32[] r;
-        bytes32[] s;
+    struct Order {
+        address exchangeHandler;
+        bytes genericPayload;
     }
 
-    /// @dev Constructor
-    /// @param proxy Address of the TokenTransferProxy
-    function TotlePrimary(address proxy) public {
-        tokenTransferProxy = proxy;
+    struct TradeFlag {
+        bool ignoreTrade;
+        bool[] ignoreOrder;
+    }
+
+    struct CurrentAmounts {
+        uint256 amountSpentOnTrade;
+        uint256 amountReceivedFromTrade;
+        uint256 amountLeftToSpendOnTrade;
+    }
+
+    /*
+    *   Events
+    */
+
+    event GenericEvent(
+        uint256 id
+        // bytes placeholderForEventData
+    );
+
+    /*
+    *   Modifiers
+    */
+
+    modifier handlerWhitelisted(address handler) {
+        if (!handlerWhitelistMap[handler]) {
+            errorReporter.revertTx("Handler not in whitelist");
+        }
+        _;
+    }
+
+    modifier handlerNotWhitelisted(address handler) {
+        if (handlerWhitelistMap[handler]) {
+            errorReporter.revertTx("Handler already whitelisted");
+        }
+        _;
+    }
+
+    /// @notice Constructor
+    /// @param _tokenTransferProxy address of the TokenTransferProxy
+    /// @param _errorReporter the address of the error reporter contract
+    constructor (address _tokenTransferProxy, address _errorReporter/*, address _logger*/) public {
+        require(_tokenTransferProxy != address(0x0));
+        require(_errorReporter != address(0x0));
+        /* require(_logger != address(0x0)); */
+        tokenTransferProxy = _tokenTransferProxy;
+        errorReporter = ErrorReporter(_errorReporter);
+        /* logger = Logger(_logger); */
     }
 
     /*
     *   Public functions
     */
 
-    /// @dev Set an exchange handler address to true/false
-    /// @notice - onlyOwner modifier only allows the contract owner to run the code
-    /// @param handler Address of the exchange handler which permission needs changing
-    /// @param allowed Boolean value to set whether an exchange handler is allowed/denied
-    function setHandler(address handler, bool allowed) public onlyOwner {
-        handlerWhitelist[handler] = allowed;
+    /// @notice Add an exchangeHandler address to the whitelist
+    /// @dev onlyOwner modifier only allows the contract owner to run the code
+    /// @param handler Address of the exchange handler which permission needs adding
+    function addHandlerToWhitelist(address handler)
+        public
+        onlyOwner
+        handlerNotWhitelisted(handler)
+    {
+        handlerWhitelistMap[handler] = true;
+        handlerWhitelistArray.push(handler);
+        emit GenericEvent(1);
     }
 
-    /// @dev Synchronously executes an array of orders
-    /// @notice The first four parameters relate to Token orders, the last eight relate to DEX orders
-    /// @param tokenAddresses Array of addresses of ERC20 Token contracts for each Token order
-    /// @param buyOrSell Array indicating whether each Token order is a buy or sell
-    /// @param amountToObtain Array indicating the amount (in ether or tokens) to obtain in the order
-    /// @param amountToGive Array indicating the amount (in ether or tokens) to give in the order
-    /// @param tokenForOrder Array of addresses of ERC20 Token contracts for each DEX order
-    /// @param exchanges Array of addresses of exchange handler contracts
-    /// @param orderAddresses Array of address values needed for each DEX order
-    /// @param orderValues Array of uint values needed for each DEX order
-    /// @param exchangeFees Array indicating the fee for each DEX order (percentage of fill amount as decimal * 10**18)
-    /// @param v ECDSA signature parameter v
-    /// @param r ECDSA signature parameter r
-    /// @param s ECDSA signature parameter s
-    function executeOrders(
-        // Tokens
-        address[] tokenAddresses,
-        bool[]    buyOrSell,
-        uint256[] amountToObtain,
-        uint256[] amountToGive,
-        // DEX Orders
-        address[] tokenForOrder,
-        address[] exchanges,
-        address[8][] orderAddresses,
-        uint256[6][] orderValues,
-        uint256[] exchangeFees,
-        uint8[] v,
-        bytes32[] r,
-        bytes32[] s
-    ) public payable {
+    /// @notice Remove an exchangeHandler address from the whitelist
+    /// @dev onlyOwner modifier only allows the contract owner to run the code
+    /// @param handler Address of the exchange handler which permission needs removing
+    function removeHandlerFromWhitelist(address handler)
+        public
+        onlyOwner
+        handlerWhitelisted(handler)
+    {
+        delete handlerWhitelistMap[handler];
+        for (uint i = 0; i < handlerWhitelistArray.length; i++) {
+            if (handlerWhitelistArray[i] == handler) {
+                handlerWhitelistArray[i] = handlerWhitelistArray[handlerWhitelistArray.length - 1];
+                handlerWhitelistArray.length -= 1;
+                break;
+            }
+        }
+        emit GenericEvent(2);
+    }
 
-        require(
-            tokenAddresses.length == buyOrSell.length &&
-            buyOrSell.length      == amountToObtain.length &&
-            amountToObtain.length == amountToGive.length
-        );
+    /// @notice Performs the requested portfolio rebalance
+    /// @param trades A dynamic array of trade structs
+    function performRebalance(
+        Trade[] trades
+    )
+        public
+        payable
+        whenNotPaused
+    {
+        /* logger.log("Starting Rebalance..."); */
 
-        require(
-            tokenForOrder.length  == exchanges.length &&
-            exchanges.length      == orderAddresses.length &&
-            orderAddresses.length == orderValues.length &&
-            orderValues.length    == exchangeFees.length &&
-            exchangeFees.length   == v.length &&
-            v.length              == r.length &&
-            r.length              == s.length
-        );
+        TradeFlag[] memory tradeFlags = initialiseTradeFlags(trades);
 
-        // Wrapping order in structs to reduce local variable count
-        internalOrderExecution(
-            Tokens(
-                tokenAddresses,
-                buyOrSell,
-                amountToObtain,
-                amountToGive
-            ),
-            DEXOrders(
-                tokenForOrder,
-                exchanges,
-                orderAddresses,
-                orderValues,
-                exchangeFees,
-                v,
-                r,
-                s
-            )
-        );
+        staticChecks(trades, tradeFlags);
+
+        /* logger.log("Static checks passed."); */
+
+        transferTokens(trades, tradeFlags);
+
+        /* logger.log("Tokens transferred."); */
+
+        uint256 etherBalance = msg.value;
+
+        /* logger.log("Ether balance arg2: etherBalance.", etherBalance); */
+
+        for (uint256 i; i < trades.length; i++) {
+            Trade memory thisTrade = trades[i];
+            TradeFlag memory thisTradeFlag = tradeFlags[i];
+
+            CurrentAmounts memory amounts = CurrentAmounts({
+                amountSpentOnTrade: 0,
+                amountReceivedFromTrade: 0,
+                amountLeftToSpendOnTrade: thisTrade.isSell ? thisTrade.tokenAmount : calculateMaxEtherSpend(thisTrade, etherBalance)
+            });
+            /* logger.log("Going to perform trade. arg2: amountLeftToSpendOnTrade", amounts.amountLeftToSpendOnTrade); */
+
+            performTrade(
+                thisTrade,
+                thisTradeFlag,
+                amounts
+            );
+
+            /* logger.log("Finished performing trade arg2: amountReceivedFromTrade, arg3: amountSpentOnTrade.", amounts.amountReceivedFromTrade, amounts.amountSpentOnTrade); */
+
+            if (amounts.amountReceivedFromTrade == 0 && thisTrade.optionalTrade) {
+                /* logger.log("Received 0 from trade and this is an optional trade. Skipping."); */
+                continue;
+            }
+
+            /* logger.log(
+                "Going to check trade acceptable amounts arg2: amountSpentOnTrade, arg2: amountReceivedFromTrade.",
+                amounts.amountSpentOnTrade,
+                amounts.amountReceivedFromTrade
+            ); */
+
+            if (!checkIfTradeAmountsAcceptable(thisTrade, amounts.amountSpentOnTrade, amounts.amountReceivedFromTrade)) {
+                errorReporter.revertTx("Amounts spent/received in trade not acceptable");
+            }
+
+            /* logger.log("Trade passed the acceptable amounts check."); */
+
+            if (thisTrade.isSell) {
+                /* logger.log(
+                    "This is a sell trade, adding ether to our balance arg2: etherBalance, arg3: amountReceivedFromTrade",
+                    etherBalance,
+                    amounts.amountReceivedFromTrade
+                ); */
+                etherBalance = SafeMath.add(etherBalance, amounts.amountReceivedFromTrade);
+            } else {
+                /* logger.log(
+                    "This is a buy trade, deducting ether from our balance arg2: etherBalance, arg3: amountSpentOnTrade",
+                    etherBalance,
+                    amounts.amountSpentOnTrade
+                ); */
+                etherBalance = SafeMath.sub(etherBalance, amounts.amountSpentOnTrade);
+            }
+
+            /* logger.log("Transferring tokens to the user arg:6 tokenAddress.", 0,0,0,0, thisTrade.tokenAddress); */
+
+            transferTokensToUser(
+                thisTrade.tokenAddress,
+                thisTrade.isSell ? amounts.amountLeftToSpendOnTrade : amounts.amountReceivedFromTrade
+            );
+
+        }
+
+        if(etherBalance > 0) {
+            /* logger.log("Got a positive ether balance, sending to the user arg2: etherBalance.", etherBalance); */
+            msg.sender.transfer(etherBalance);
+        }
+    }
+
+    /// @notice Performs static checks on the rebalance payload before execution
+    /// @dev This function is public so a rebalance can be checked before performing a rebalance
+    /// @param trades A dynamic array of trade structs
+    /// @param tradeFlags A dynamic array of flags indicating trade and order status
+    function staticChecks(
+        Trade[] trades,
+        TradeFlag[] tradeFlags
+    )
+        public
+        view
+        whenNotPaused
+    {
+        bool previousBuyOccured = false;
+
+        for (uint256 i; i < trades.length; i++) {
+            Trade memory thisTrade = trades[i];
+            if (thisTrade.isSell) {
+                if (previousBuyOccured) {
+                    errorReporter.revertTx("A buy has occured before this sell");
+                }
+
+                if (!Utils.tokenAllowanceAndBalanceSet(msg.sender, thisTrade.tokenAddress, thisTrade.tokenAmount, tokenTransferProxy)) {
+                    if (!thisTrade.optionalTrade) {
+                        errorReporter.revertTx("Taker has not sent allowance/balance on a non-optional trade");
+                    }
+                    /* logger.log(
+                        "Attempt to sell a token without allowance or sufficient balance arg2: tokenAmount, arg6: tokenAddress . Otional trade, ignoring.",
+                        thisTrade.tokenAmount,
+                        0,
+                        0,
+                        0,
+                        thisTrade.tokenAddress
+                    ); */
+                    tradeFlags[i].ignoreTrade = true;
+                    continue;
+                }
+            } else {
+                previousBuyOccured = true;
+            }
+
+            /* logger.log("Checking that all the handlers are whitelisted."); */
+            for (uint256 j; j < thisTrade.orders.length; j++) {
+                Order memory thisOrder = thisTrade.orders[j];
+                if ( !handlerWhitelistMap[thisOrder.exchangeHandler] ) {
+                    /* logger.log(
+                        "Trying to use a handler that is not whitelisted arg6: exchangeHandler.",
+                        0,
+                        0,
+                        0,
+                        0,
+                        thisOrder.exchangeHandler
+                    ); */
+                    tradeFlags[i].ignoreOrder[j] = true;
+                    continue;
+                }
+            }
+        }
     }
 
     /*
     *   Internal functions
     */
 
-    /// @dev Synchronously executes an array of orders
-    /// @notice The orders in this function have been wrapped in structs to reduce the local variable count
-    /// @param tokens Struct containing the arrays of token orders
-    /// @param orders Struct containing the arrays of DEX orders
-    function internalOrderExecution(Tokens tokens, DEXOrders orders) internal {
-        transferTokens(tokens);
+    /// @notice Initialises the trade flag struct
+    /// @param trades the trades used to initialise the flags
+    /// @return tradeFlags the initialised flags
+    function initialiseTradeFlags(Trade[] trades)
+        internal
+        returns (TradeFlag[])
+    {
+        /* logger.log("Initializing trade flags."); */
+        TradeFlag[] memory tradeFlags = new TradeFlag[](trades.length);
+        for (uint256 i = 0; i < trades.length; i++) {
+            tradeFlags[i].ignoreOrder = new bool[](trades[i].orders.length);
+        }
+        return tradeFlags;
+    }
 
-        uint256 tokensLength = tokens.tokenAddresses.length;
-        uint256 ordersLength = orders.tokenForOrder.length;
-        uint256 etherBalance = msg.value;
-        uint256 orderIndex = 0;
+    /// @notice Transfers the given amount of tokens back to the msg.sender
+    /// @param tokenAddress the address of the token to transfer
+    /// @param tokenAmount the amount of tokens to transfer
+    function transferTokensToUser(
+        address tokenAddress,
+        uint256 tokenAmount
+    )
+        internal
+    {
+        /* logger.log("Transfering tokens to the user arg2: tokenAmount, arg6: .tokenAddress", tokenAmount, 0, 0, 0, tokenAddress); */
+        if (tokenAmount > 0) {
+            if (!ERC20SafeTransfer.safeTransfer(tokenAddress, msg.sender, tokenAmount)) {
+                errorReporter.revertTx("Unable to transfer tokens to user");
+            }
+        }
+    }
 
-        for(uint256 tokenIndex = 0; tokenIndex < tokensLength; tokenIndex++) {
+    /// @notice Executes the given trade
+    /// @param trade a struct containing information about the trade
+    /// @param tradeFlag a struct containing trade status information
+    /// @param amounts a struct containing information about amounts spent
+    /// and received in the rebalance
+    function performTrade(
+        Trade trade,
+        TradeFlag tradeFlag,
+        CurrentAmounts amounts
+    )
+        internal
+    {
+        /* logger.log("Performing trade"); */
 
-            uint256 amountRemaining = tokens.amountToGive[tokenIndex];
-            uint256 amountObtained = 0;
+        for (uint256 j; j < trade.orders.length; j++) {
 
-            while(orderIndex < ordersLength) {
-                require(tokens.tokenAddresses[tokenIndex] == orders.tokenForOrder[orderIndex]);
-                require(handlerWhitelist[orders.exchanges[orderIndex]]);
+            /* logger.log("Processing order arg2: orderIndex", j); */
 
-                if(amountRemaining > 0) {
-                    if(tokens.buyOrSell[tokenIndex] == BUY) {
-                        require(etherBalance >= amountRemaining);
+            //TODO: Change to the amount of tokens that we are trying to get
+            if( amounts.amountReceivedFromTrade >= trade.minimumAcceptableTokenAmount ) {
+                /* logger.log(
+                    "Got the desired amount from the trade arg2: amountReceivedFromTrade, arg3: minimumAcceptableTokenAmount",
+                    amounts.amountReceivedFromTrade,
+                    trade.minimumAcceptableTokenAmount
+                ); */
+                return;
+            }
+
+            if (tradeFlag.ignoreOrder[j] || amounts.amountLeftToSpendOnTrade == 0) {
+                /* logger.log(
+                    "Order ignore flag is set to true or have nothing left to spend arg2: amountLeftToSpendOnTrade",
+                    amounts.amountLeftToSpendOnTrade
+                ); */
+                continue;
+            }
+
+            uint256 amountSpentOnOrder = 0;
+            uint256 amountReceivedFromOrder = 0;
+
+            Order memory thisOrder = trade.orders[j];
+
+            /* logger.log("Setting order exchange handler arg6: exchangeHandler.", 0, 0, 0, 0, thisOrder.exchangeHandler); */
+            ExchangeHandler thisHandler = ExchangeHandler(thisOrder.exchangeHandler);
+
+            uint256 amountToGiveForOrder = Utils.min(
+                thisHandler.getAmountToGive(thisOrder.genericPayload),
+                amounts.amountLeftToSpendOnTrade
+            );
+
+            if (amountToGiveForOrder == 0) {
+                /* logger.log(
+                    "MASSIVE ERROR: amountToGiveForOrder was found to be 0, this hasn't been caught in preTradeChecks, which means dynamicExchangeChecks isnt written correctly!"
+                ); */
+                continue;
+            }
+
+            /* logger.log(
+                "Calculating amountToGiveForOrder arg2: amountToGiveForOrder, arg3: amountLeftToSpendOnTrade.",
+                amountToGiveForOrder,
+                amounts.amountLeftToSpendOnTrade
+            ); */
+
+            if( !thisHandler.staticExchangeChecks(thisOrder.genericPayload) ) {
+                /* logger.log("Order did not pass checks, skipping."); */
+                continue;
+            }
+
+            if (trade.isSell) {
+                /* logger.log("This is a sell.."); */
+                if (!ERC20SafeTransfer.safeTransfer(trade.tokenAddress,address(thisHandler), amountToGiveForOrder)) {
+                    if( !trade.optionalTrade ) errorReporter.revertTx("Unable to transfer tokens to handler");
+                    else {
+                        /* logger.log("Unable to transfer tokens to handler but the trade is optional"); */
+                        return;
                     }
-                    (amountRemaining, amountObtained) = performTrade(
-                        tokens.buyOrSell[tokenIndex],
-                        amountRemaining,
-                        amountObtained,
-                        orders,
-                        orderIndex
-                        );
                 }
 
-                orderIndex = SafeMath.add(orderIndex, 1);
-                // If this is the last order for this token
-                if(orderIndex == ordersLength || orders.tokenForOrder[SafeMath.sub(orderIndex, 1)] != orders.tokenForOrder[orderIndex]) {
-                    break;
+                /* logger.log("Going to perform a sell order."); */
+                (amountSpentOnOrder, amountReceivedFromOrder) = thisHandler.performSellOrder(thisOrder.genericPayload, amountToGiveForOrder);
+                /* logger.log("Sell order performed arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder", amountSpentOnOrder, amountReceivedFromOrder); */
+            } else {
+                /* logger.log("Going to perform a buy order."); */
+                (amountSpentOnOrder, amountReceivedFromOrder) = thisHandler.performBuyOrder.value(amountToGiveForOrder)(thisOrder.genericPayload, amountToGiveForOrder);
+                /* logger.log("Buy order performed arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder", amountSpentOnOrder, amountReceivedFromOrder); */
+            }
+
+
+            if (amountReceivedFromOrder > 0) {
+                amounts.amountLeftToSpendOnTrade = SafeMath.sub(amounts.amountLeftToSpendOnTrade, amountSpentOnOrder);
+                amounts.amountSpentOnTrade = SafeMath.add(amounts.amountSpentOnTrade, amountSpentOnOrder);
+                amounts.amountReceivedFromTrade = SafeMath.add(amounts.amountReceivedFromTrade, amountReceivedFromOrder);
+
+                /* logger.log(
+                    "Updated amounts arg2: amountLeftToSpendOnTrade, arg3: amountSpentOnTrade, arg4: amountReceivedFromTrade.",
+                    amounts.amountLeftToSpendOnTrade,
+                    amounts.amountSpentOnTrade,
+                    amounts.amountReceivedFromTrade
+                ); */
+            }
+        }
+
+    }
+
+    /// @notice Check if the amounts spent and gained on a trade are within the
+    /// user"s set limits
+    /// @param trade contains information on the given trade
+    /// @param amountSpentOnTrade the amount that was spent on the trade
+    /// @param amountReceivedFromTrade the amount that was received from the trade
+    /// @return bool whether the trade passes the checks
+    function checkIfTradeAmountsAcceptable(
+        Trade trade,
+        uint256 amountSpentOnTrade,
+        uint256 amountReceivedFromTrade
+    )
+        internal
+        view
+        returns (bool passed)
+    {
+        /* logger.log("Checking if trade amounts are acceptable."); */
+        uint256 tokenAmount = trade.isSell ? amountSpentOnTrade : amountReceivedFromTrade;
+        passed = tokenAmount >= trade.minimumAcceptableTokenAmount;
+
+        if( !passed ) {
+            /* logger.log(
+                "Received less than minimum acceptable tokens arg2: tokenAmount , arg3: minimumAcceptableTokenAmount.",
+                tokenAmount,
+                trade.minimumAcceptableTokenAmount
+            ); */
+        }
+
+        if (passed) {
+            uint256 tokenDecimals = Utils.getDecimals(ERC20(trade.tokenAddress));
+            uint256 srcDecimals = trade.isSell ? tokenDecimals : Utils.eth_decimals();
+            uint256 destDecimals = trade.isSell ? Utils.eth_decimals() : tokenDecimals;
+            uint256 actualRate = Utils.calcRateFromQty(amountSpentOnTrade, amountReceivedFromTrade, srcDecimals, destDecimals);
+            passed = actualRate >= trade.minimumExchangeRate;
+        }
+
+        if( !passed ) {
+            /* logger.log(
+                "Order rate was lower than minimum acceptable,  rate arg2: actualRate, arg3: minimumExchangeRate.",
+                actualRate,
+                trade.minimumExchangeRate
+            ); */
+        }
+    }
+
+    /// @notice Iterates through a list of token orders, transfer the SELL orders to this contract & calculates if we have the ether needed
+    /// @param trades A dynamic array of trade structs
+    /// @param tradeFlags A dynamic array of flags indicating trade and order status
+    function transferTokens(Trade[] trades, TradeFlag[] tradeFlags) internal {
+        for (uint256 i = 0; i < trades.length; i++) {
+            if (trades[i].isSell && !tradeFlags[i].ignoreTrade) {
+
+                /* logger.log(
+                    "Transfering tokens arg2: tokenAmount, arg5: tokenAddress.",
+                    trades[i].tokenAmount,
+                    0,
+                    0,
+                    0,
+                    trades[i].tokenAddress
+                ); */
+                if (
+                    !TokenTransferProxy(tokenTransferProxy).transferFrom(
+                        trades[i].tokenAddress,
+                        msg.sender,
+                        address(this),
+                        trades[i].tokenAmount
+                    )
+                ) {
+                    errorReporter.revertTx("TTP unable to transfer tokens to primary");
                 }
-            }
-
-            uint256 amountGiven = SafeMath.sub(tokens.amountToGive[tokenIndex], amountRemaining);
-
-            require(orderWasValid(amountObtained, amountGiven, tokens.amountToObtain[tokenIndex], tokens.amountToGive[tokenIndex]));
-
-            if(tokens.buyOrSell[tokenIndex] == BUY) {
-                // Take away spent ether from refund balance
-                etherBalance = SafeMath.sub(etherBalance, amountGiven);
-                // Transfer back tokens acquired
-                if(amountObtained > 0) {
-                    require(Token(tokens.tokenAddresses[tokenIndex]).transfer(msg.sender, amountObtained));
-                }
-            } else {
-                // Add ether to refund balance
-                etherBalance = SafeMath.add(etherBalance, amountObtained);
-                // Transfer back un-sold tokens
-                if(amountRemaining > 0) {
-                    require(Token(tokens.tokenAddresses[tokenIndex]).transfer(msg.sender, amountRemaining));
-                }
-            }
-        }
-
-        // Send back acquired/unspent ether - throw on failure
-        if(etherBalance > 0) {
-            msg.sender.transfer(etherBalance);
+                emit GenericEvent(3);
+           }
         }
     }
 
-    /// @dev Iterates through a list of token orders, transfer the SELL orders to this contract & calculates if we have the ether needed
-    /// @param tokens Struct containing the arrays of token orders
-    function transferTokens(Tokens tokens) internal {
-        uint256 expectedEtherAvailable = msg.value;
-        uint256 totalEtherNeeded = 0;
+    /// @notice Calculates the maximum amount that should be spent on a given buy trade
+    /// @param trade the buy trade to return the spend amount for
+    /// @param etherBalance the amount of ether that we currently have to spend
+    /// @return uint256 the maximum amount of ether we should spend on this trade
+    function calculateMaxEtherSpend(Trade trade, uint256 etherBalance) internal view returns (uint256) {
+        /// @dev This function should never be called for a sell
+        assert(!trade.isSell);
 
-        for(uint256 i = 0; i < tokens.tokenAddresses.length; i++) {
-            if(tokens.buyOrSell[i] == BUY) {
-                totalEtherNeeded = SafeMath.add(totalEtherNeeded, tokens.amountToGive[i]);
-            } else {
-                expectedEtherAvailable = SafeMath.add(expectedEtherAvailable, tokens.amountToObtain[i]);
-                require(TokenTransferProxy(tokenTransferProxy).transferFrom(
-                    tokens.tokenAddresses[i],
-                    msg.sender,
-                    this,
-                    tokens.amountToGive[i]
-                ));
-            }
-        }
+        uint256 tokenDecimals = Utils.getDecimals(ERC20(trade.tokenAddress));
+        uint256 srcDecimals = trade.isSell ? tokenDecimals : Utils.eth_decimals();
+        uint256 destDecimals = trade.isSell ? Utils.eth_decimals() : tokenDecimals;
+        uint256 maxSpendAtMinRate = Utils.calcSrcQty(trade.tokenAmount, srcDecimals, destDecimals, trade.minimumExchangeRate);
 
-        // Make sure we have will have enough ETH after SELLs to cover our BUYs
-        require(expectedEtherAvailable >= totalEtherNeeded);
+        return Utils.min(etherBalance, maxSpendAtMinRate);
     }
 
-    /// @dev Performs a single trade via the requested exchange handler
-    /// @param buyOrSell Boolean value stating whether this is a buy or sell order
-    /// @param initialRemaining The remaining value we have left to trade
-    /// @param totalObtained The total amount we have obtained so far
-    /// @param orders Struct containing all DEX orders
-    /// @param index Value indicating the index of the specific DEX order we wish to execute
-    /// @return Remaining value left after trade
-    /// @return Total value obtained after trade
-    function performTrade(bool buyOrSell, uint256 initialRemaining, uint256 totalObtained, DEXOrders orders, uint256 index)
-        internal returns (uint256, uint256) {
-        uint256 obtained = 0;
-        uint256 remaining = initialRemaining;
+    /*
+    *   Payable fallback function
+    */
 
-        require(orders.exchangeFees[index] < MAX_EXCHANGE_FEE_PERCENTAGE);
-
-        uint256 amountToFill = getAmountToFill(remaining, orders, index);
-
-        if(amountToFill > 0) {
-            remaining = SafeMath.sub(remaining, amountToFill);
-
-            if(buyOrSell == BUY) {
-                obtained = ExchangeHandler(orders.exchanges[index]).performBuy.value(amountToFill)(
-                    orders.orderAddresses[index],
-                    orders.orderValues[index],
-                    orders.exchangeFees[index],
-                    amountToFill,
-                    orders.v[index],
-                    orders.r[index],
-                    orders.s[index]
-                );
-            } else {
-                require(Token(orders.tokenForOrder[index]).transfer(
-                    orders.exchanges[index],
-                    amountToFill
-                ));
-                obtained = ExchangeHandler(orders.exchanges[index]).performSell(
-                    orders.orderAddresses[index],
-                    orders.orderValues[index],
-                    orders.exchangeFees[index],
-                    amountToFill,
-                    orders.v[index],
-                    orders.r[index],
-                    orders.s[index]
-                );
-            }
-        }
-
-        return (obtained == 0 ? initialRemaining: remaining, SafeMath.add(totalObtained, obtained));
-    }
-
-    /// @dev Get the amount of this order we are able to fill
-    /// @param remaining Amount we have left to spend
-    /// @param orders Struct containing all DEX orders
-    /// @param index Value indicating the index of the specific DEX order we wish to execute
-    /// @return Minimum of the amount we have left to spend and the available amount at the exchange
-    function getAmountToFill(uint256 remaining, DEXOrders orders, uint256 index) internal returns (uint256) {
-
-        uint256 availableAmount = ExchangeHandler(orders.exchanges[index]).getAvailableAmount(
-            orders.orderAddresses[index],
-            orders.orderValues[index],
-            orders.exchangeFees[index],
-            orders.v[index],
-            orders.r[index],
-            orders.s[index]
-        );
-
-        return Math.min256(remaining, availableAmount);
-    }
-
-    /// @dev Checks whether a given order was valid
-    /// @param amountObtained Amount of the order which was obtained
-    /// @param amountGiven Amount given in return for amountObtained
-    /// @param amountToObtain Amount we intended to obtain
-    /// @param amountToGive Amount we intended to give in return for amountToObtain
-    /// @return Boolean value indicating whether this order was valid
-    function orderWasValid(uint256 amountObtained, uint256 amountGiven, uint256 amountToObtain, uint256 amountToGive) internal pure returns (bool) {
-
-        if(amountObtained > 0 && amountGiven > 0) {
-            if(amountObtained > amountGiven) {
-                return SafeMath.div(amountToObtain, amountToGive) <= SafeMath.div(amountObtained, amountGiven);
-            } else {
-                return SafeMath.div(amountToGive, amountToObtain) >= SafeMath.div(amountGiven, amountObtained);
-            }
-        }
-        return false;
-    }
-
-    function() public payable {
+    /// @notice payable fallback to allow handler or exchange contracts to return ether
+    /// @dev only accounts containing code (ie. contracts) can send ether to this contract
+    function() public payable whenNotPaused {
         // Check in here that the sender is a contract! (to stop accidents)
         uint256 size;
         address sender = msg.sender;
         assembly {
             size := extcodesize(sender)
         }
-        require(size > 0);
+        if (size == 0) {
+            errorReporter.revertTx("EOA cannot send ether to primary fallback");
+        }
     }
 }

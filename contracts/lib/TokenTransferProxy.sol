@@ -1,6 +1,6 @@
 /*
 
-  Copyright 2017 ZeroEx Intl.
+  Copyright 2018 ZeroEx Intl.
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -16,11 +16,14 @@
 
 */
 
-pragma solidity 0.4.21;
+pragma solidity 0.4.25;
 
-import { ERC20 as Token } from "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
-import { Ownable } from "openzeppelin-solidity/contracts/ownership/Ownable.sol";
+import "./ERC20.sol";
+import "./ERC20SafeTransfer.sol";
+import "./Ownable.sol";
 
+/// @title TokenTransferProxy - Transfers tokens on behalf of contracts that have been approved via decentralized governance.
+/// @author Amir Bandeali - <amir@0xProject.com>, Will Warren - <will@0xProject.com>
 contract TokenTransferProxy is Ownable {
 
     /// @dev Only authorized addresses can invoke functions with this modifier.
@@ -94,7 +97,8 @@ contract TokenTransferProxy is Ownable {
         onlyAuthorized
         returns (bool)
     {
-        return Token(token).transferFrom(from, to, value);
+        require(ERC20SafeTransfer.safeTransferFrom(token, from, to, value));
+        return true;
     }
 
     /*
@@ -105,7 +109,7 @@ contract TokenTransferProxy is Ownable {
     /// @return Array of authorized addresses.
     function getAuthorizedAddresses()
         public
-        constant
+        view
         returns (address[])
     {
         return authorities;
