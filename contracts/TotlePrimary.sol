@@ -60,9 +60,8 @@ contract TotlePrimary is Withdrawable, Pausable {
     *   Events
     */
 
-    event GenericEvent(
-        uint256 id
-        // bytes placeholderForEventData
+    event LogRebalance(
+        bytes32 id
     );
 
     /*
@@ -109,7 +108,6 @@ contract TotlePrimary is Withdrawable, Pausable {
     {
         handlerWhitelistMap[handler] = true;
         handlerWhitelistArray.push(handler);
-        emit GenericEvent(1);
     }
 
     /// @notice Remove an exchangeHandler address from the whitelist
@@ -128,18 +126,19 @@ contract TotlePrimary is Withdrawable, Pausable {
                 break;
             }
         }
-        emit GenericEvent(2);
     }
 
     /// @notice Performs the requested portfolio rebalance
     /// @param trades A dynamic array of trade structs
     function performRebalance(
-        Trade[] trades
+        Trade[] trades,
+        bytes32 id
     )
         public
         payable
         whenNotPaused
     {
+        emit LogRebalance(id);
         /* logger.log("Starting Rebalance..."); */
 
         TradeFlag[] memory tradeFlags = initialiseTradeFlags(trades);
@@ -490,7 +489,6 @@ contract TotlePrimary is Withdrawable, Pausable {
                 ) {
                     errorReporter.revertTx("TTP unable to transfer tokens to primary");
                 }
-                emit GenericEvent(3);
            }
         }
     }
