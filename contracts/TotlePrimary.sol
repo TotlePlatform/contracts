@@ -69,6 +69,13 @@ contract TotlePrimary is Withdrawable, Pausable {
         uint256 totalFee
     );
 
+    event LogTrade(
+        bool isSell,
+        address token,
+        uint256 ethAmount,
+        uint256 tokenAmount
+    );
+
     /*
     *   Modifiers
     */
@@ -139,7 +146,7 @@ contract TotlePrimary is Withdrawable, Pausable {
             }
         }
     }
-    event LogTrade(bool isSell, address token, uint256 ethAmount, uint256 tokenAmount)
+
     /// @notice Performs the requested portfolio rebalance
     /// @param trades A dynamic array of trade structs
     function performRebalance(
@@ -157,7 +164,6 @@ contract TotlePrimary is Withdrawable, Pausable {
         Affiliate affiliate = Affiliate(feeAccount);
         uint256 feePercentage = affiliate.getTotalFeePercentage();
 
-        emit LogRebalance(id);
         /* logger.log("Starting Rebalance..."); */
 
         TradeFlag[] memory tradeFlags = initialiseTradeFlags(trades);
@@ -174,7 +180,7 @@ contract TotlePrimary is Withdrawable, Pausable {
         uint256 totalFee = 0;
         /* logger.log("Ether balance arg2: etherBalance.", etherBalance); */
         uint256 totalTraded = 0;
-        for (uint256 i; i < trades.length; i++) {amountTokens
+        for (uint256 i; i < trades.length; i++) {
             Trade memory thisTrade = trades[i];
             TradeFlag memory thisTradeFlag = tradeFlags[i];
 
@@ -190,7 +196,7 @@ contract TotlePrimary is Withdrawable, Pausable {
                 thisTradeFlag,
                 amounts
             );
-            emit TradeLog(thisTrade.isSell, thisTrade.tokenAddress, thisTrade.isSell ? aamounts.amountReceivedFromTrade:amounts.amountSpentOnTrade, thisTrade.isSell?amounts.amountSpentOnTrade:amounts.amountReceivedFromTrade);
+            emit LogTrade(thisTrade.isSell, thisTrade.tokenAddress, thisTrade.isSell ? amounts.amountReceivedFromTrade:amounts.amountSpentOnTrade, thisTrade.isSell?amounts.amountSpentOnTrade:amounts.amountReceivedFromTrade);
 
             uint256 ethTraded;
             uint256 ethFee;
@@ -245,7 +251,7 @@ contract TotlePrimary is Withdrawable, Pausable {
             );
 
         }
-        emit LogRebalance(id, totalTraded, totalFee)
+        emit LogRebalance(id, totalTraded, totalFee);
         if(totalFee > 0){
             feeAccount.transfer(totalFee);
         }
