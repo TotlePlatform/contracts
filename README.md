@@ -35,6 +35,7 @@ Under the current payload design we are somewhat limited by what exchanges we ar
 
 ## 3. Contract Addresses
 - TotlePrimary - [0x99ECA38B58cEEaf0FeD5351DF21D5B4C55995314](https://etherscan.io/address/0x99ECA38B58cEEaf0FeD5351DF21D5B4C55995314)
+- TotleProxyPrimary - [0xa674695d170b51e300624728fb920f3c01b0f5c3](https://etherscan.io/address/0xa674695d170b51e300624728fb920f3c01b0f5c3)
 - TokenTransferProxy - [0x74758AcFcE059f503a7E6B0fC2c8737600f9F2c4](https://etherscan.io/address/0x74758AcFcE059f503a7E6B0fC2c8737600f9F2c4)
 - AffiliateRegistry - [0x18CC055089e2EdA27bF2F477dDdd6B1Cf082e001](https://etherscan.io/address/0x18CC055089e2EdA27bF2F477dDdd6B1Cf082e001)
 - EtherDeltaHandler - [0xe49b07729c82a520bc57b96f3552fe73a248cc28](https://etherscan.io/address/0xe49b07729c82a520bc57b96f3552fe73a248cc28)
