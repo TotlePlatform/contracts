@@ -9,30 +9,22 @@ import "../lib/ErrorReporter.sol";
 import "./SelectorProvider.sol";
 
 /// @title Interface for all exchange handler contracts
-contract ExchangeHandler is TotleControl, Withdrawable, Pausable {
+contract ExchangeHandler is SelectorProvider, TotleControl, Withdrawable, Pausable {
 
     /*
     *   State Variables
     */
 
-    SelectorProvider public selectorProvider;
     ErrorReporter public errorReporter;
     /* Logger public logger; */
     /*
     *   Modifiers
     */
 
-    modifier onlySelf() {
-        require(msg.sender == address(this));
-        _;
-    }
-
     /// @notice Constructor
     /// @dev Calls the constructor of the inherited TotleControl
-    /// @param _selectorProvider the provider for this exchanges function selectors
     /// @param totlePrimary the address of the totlePrimary contract
     constructor(
-        address _selectorProvider,
         address totlePrimary,
         address _errorReporter
         /* ,address _logger */
@@ -40,10 +32,8 @@ contract ExchangeHandler is TotleControl, Withdrawable, Pausable {
         TotleControl(totlePrimary)
         public
     {
-        require(_selectorProvider != address(0x0));
         require(_errorReporter != address(0x0));
         /* require(_logger != address(0x0)); */
-        selectorProvider = SelectorProvider(_selectorProvider);
         errorReporter = ErrorReporter(_errorReporter);
         /* logger = Logger(_logger); */
     }
@@ -56,12 +46,10 @@ contract ExchangeHandler is TotleControl, Withdrawable, Pausable {
     )
         public
         view
-        onlyTotle
-        whenNotPaused
         returns (uint256 amountToGive)
     {
         bool success;
-        bytes4 functionSelector = selectorProvider.getSelector(this.getAmountToGive.selector);
+        bytes4 functionSelector = getSelector(this.getAmountToGive.selector);
 
         assembly {
             let functionSelectorLength := 0x04
@@ -76,10 +64,9 @@ contract ExchangeHandler is TotleControl, Withdrawable, Pausable {
             let functionSelectorCorrect := mload(scratchSpace)
             mstore(genericPayload, functionSelectorCorrect)
 
-            success := call(
+            success := delegatecall(
                             gas,
                             address, // This address of the current contract
-                            callvalue,
                             startOfNewData, // Start data at the beginning of the functionSelector
                             totalLength, // Total length of all data, including functionSelector
                             scratchSpace, // Use the first word of memory (scratch space) to store our return variable.
@@ -99,12 +86,10 @@ contract ExchangeHandler is TotleControl, Withdrawable, Pausable {
     )
         public
         view
-        onlyTotle
-        whenNotPaused
         returns (bool checksPassed)
     {
         bool success;
-        bytes4 functionSelector = selectorProvider.getSelector(this.staticExchangeChecks.selector);
+        bytes4 functionSelector = getSelector(this.staticExchangeChecks.selector);
         assembly {
             let functionSelectorLength := 0x04
             let functionSelectorOffset := 0x1C
@@ -118,10 +103,9 @@ contract ExchangeHandler is TotleControl, Withdrawable, Pausable {
             let functionSelectorCorrect := mload(scratchSpace)
             mstore(genericPayload, functionSelectorCorrect)
 
-            success := call(
+            success := delegatecall(
                             gas,
                             address, // This address of the current contract
-                            callvalue,
                             startOfNewData, // Start data at the beginning of the functionSelector
                             totalLength, // Total length of all data, including functionSelector
                             scratchSpace, // Use the first word of memory (scratch space) to store our return variable.
@@ -143,12 +127,10 @@ contract ExchangeHandler is TotleControl, Withdrawable, Pausable {
     )
         public
         payable
-        onlyTotle
-        whenNotPaused
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         bool success;
-        bytes4 functionSelector = selectorProvider.getSelector(this.performBuyOrder.selector);
+        bytes4 functionSelector = getSelector(this.performBuyOrder.selector);
         assembly {
             let callDataOffset := 0x44
             let functionSelectorOffset := 0x1C
@@ -172,10 +154,9 @@ contract ExchangeHandler is TotleControl, Withdrawable, Pausable {
 
             let startOfNewData := add(startOfFreeMemory,functionSelectorOffset)
 
-            success := call(
+            success := delegatecall(
                             gas,
                             address, // This address of the current contract
-                            callvalue,
                             startOfNewData, // Start data at the beginning of the functionSelector
                             totalLength, // Total length of all data, including functionSelector
                             scratchSpace, // Use the first word of memory (scratch space) to store our return variable.
@@ -197,12 +178,10 @@ contract ExchangeHandler is TotleControl, Withdrawable, Pausable {
         uint256 amountToGiveForOrder
     )
         public
-        onlyTotle
-        whenNotPaused
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         bool success;
-        bytes4 functionSelector = selectorProvider.getSelector(this.performSellOrder.selector);
+        bytes4 functionSelector = getSelector(this.performSellOrder.selector);
         assembly {
             let callDataOffset := 0x44
             let functionSelectorOffset := 0x1C
@@ -226,10 +205,9 @@ contract ExchangeHandler is TotleControl, Withdrawable, Pausable {
 
             let startOfNewData := add(startOfFreeMemory,functionSelectorOffset)
 
-            success := call(
+            success := delegatecall(
                             gas,
                             address, // This address of the current contract
-                            callvalue,
                             startOfNewData, // Start data at the beginning of the functionSelector
                             totalLength, // Total length of all data, including functionSelector
                             scratchSpace, // Use the first word of memory (scratch space) to store our return variable.

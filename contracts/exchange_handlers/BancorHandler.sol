@@ -36,24 +36,6 @@ interface BancorNetwork {
     function getReturnByPath(address[] _path, uint256 _amount) external view returns (uint256) ;
 }
 
-/// @title BancorSelectorProvider
-/// @notice Provides this exchange implementation with correctly formatted function selectors
-contract BancorSelectorProvider is SelectorProvider {
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGive) {
-            return bytes4(keccak256("getAmountToGive((address,address[11],address,uint256,uint256,uint256))"));
-        } else if (genericSelector == staticExchangeChecks) {
-            return bytes4(keccak256("staticExchangeChecks((address,address[11],address,uint256,uint256,uint256))"));
-        } else if (genericSelector == performBuyOrder) {
-            return bytes4(keccak256("performBuyOrder((address,address[11],address,uint256,uint256,uint256),uint256)"));
-        } else if (genericSelector == performSellOrder) {
-            return bytes4(keccak256("performSellOrder((address,address[11],address,uint256,uint256,uint256),uint256)"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
-}
-
 /// @title Interface for all exchange handler contracts
 /// @notice Handles the all Bancor trades for the primary contract
 contract BancorHandler is ExchangeHandler, AllowanceSetter {
@@ -73,16 +55,14 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
 
 
     /// @notice Constructor
-    /// @param selectorProvider the provider for this exchanges function selectors
     /// @param totlePrimary the address of the totlePrimary contract
     /// @param errorReporter the address of the error reporter contract
     constructor(
-        address selectorProvider,
         address totlePrimary,
         address errorReporter
         /* ,address logger */
     )
-        ExchangeHandler(selectorProvider, totlePrimary, errorReporter/*, logger*/)
+        ExchangeHandler(totlePrimary, errorReporter/*, logger*/)
         public
     {}
 
@@ -91,7 +71,7 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
     */
 
     /// @notice Gets the amount that Totle needs to give for this order
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -103,7 +83,7 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountToGive)
     {
         amountToGive = data.amountToGive;
@@ -112,7 +92,7 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
 
     /// @notice Perform exchange-specific checks on the given order
     /// @dev This function should be called to check for payload errors.
-    /// Uses the `onlySelf` modifier with public visibility as this function
+    /// Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -124,7 +104,7 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (bool checksPassed)
     {
         BancorConverter converter = BancorConverter(data.converterAddress);
@@ -143,7 +123,7 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /// @notice Perform a buy order at the exchange
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -158,7 +138,7 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
         public
         payable
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         amountSpentOnOrder = amountToGiveForOrder;
@@ -174,13 +154,13 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
             amountReceivedFromOrder
         ); */
 
-        if (!ERC20SafeTransfer.safeTransfer(data.destinationToken, totlePrimary, amountReceivedFromOrder)){
+        if (!ERC20SafeTransfer.safeTransfer(data.destinationToken, msg.sender, amountReceivedFromOrder)){
             errorReporter.revertTx("Failed to transfer tokens to totle primary");
         }
     }
 
     /// @notice Perform a sell order at the exchange
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -194,7 +174,7 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         approveAddress(data.converterAddress, data.conversionPath[0]);
@@ -212,7 +192,7 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
             amountReceivedFromOrder
         ); */
 
-        totlePrimary.transfer(amountReceivedFromOrder);
+        msg.sender.transfer(amountReceivedFromOrder);
     }
 
     /// @notice Calculate the result of ((numerator * target) / denominator)
@@ -248,6 +228,20 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
             trimmedArray[index] = addresses[index];
         }
         return trimmedArray;
+    }
+
+    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
+        if (genericSelector == getAmountToGiveSelector) {
+            return bytes4(keccak256("getAmountToGive((address,address[11],address,uint256,uint256,uint256))"));
+        } else if (genericSelector == staticExchangeChecksSelector) {
+            return bytes4(keccak256("staticExchangeChecks((address,address[11],address,uint256,uint256,uint256))"));
+        } else if (genericSelector == performBuyOrderSelector) {
+            return bytes4(keccak256("performBuyOrder((address,address[11],address,uint256,uint256,uint256),uint256)"));
+        } else if (genericSelector == performSellOrderSelector) {
+            return bytes4(keccak256("performSellOrder((address,address[11],address,uint256,uint256,uint256),uint256)"));
+        } else {
+            return bytes4(0x0);
+        }
     }
 
     /*

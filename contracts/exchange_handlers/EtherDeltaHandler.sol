@@ -18,24 +18,6 @@ interface EtherDelta {
     function availableVolume(address tokenGet, uint256 amountGet, address tokenGive, uint256 amountGive, uint256 expires, uint256 nonce, address user, uint8 v, bytes32 r, bytes32 s) external view returns (uint256);
 }
 
-/// @title EtherDeltaSelectorProvider
-/// @notice Provides this exchange implementation with correctly formatted function selectors
-contract EtherDeltaSelectorProvider is SelectorProvider {
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGive) {
-            return bytes4(keccak256("getAmountToGive((address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32,uint256))"));
-        } else if (genericSelector == staticExchangeChecks) {
-            return bytes4(keccak256("staticExchangeChecks((address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32,uint256))"));
-        } else if (genericSelector == performBuyOrder) {
-            return bytes4(keccak256("performBuyOrder((address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32,uint256),uint256)"));
-        } else if (genericSelector == performSellOrder) {
-            return bytes4(keccak256("performSellOrder((address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32,uint256),uint256)"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
-}
-
 /// @title EtherDeltaHandler
 /// @notice Handles the all EtherDelta trades for the primary contract
 contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
@@ -66,17 +48,15 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
 
     /// @notice Constructor
     /// @param _exchange Address of the EtherDelta exchange
-    /// @param selectorProvider the provider for this exchanges function selectors
     /// @param totlePrimary the address of the totlePrimary contract
     /// @param errorReporter the address of the error reporter contract
     constructor(
         address _exchange,
-        address selectorProvider,
         address totlePrimary,
         address errorReporter
         /* ,address logger */
     )
-        ExchangeHandler(selectorProvider, totlePrimary, errorReporter/*, logger*/)
+        ExchangeHandler(totlePrimary, errorReporter/*, logger*/)
         public
     {
         require(_exchange != address(0x0));
@@ -88,7 +68,7 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
     */
 
     /// @notice Gets the amount that Totle needs to give for this order
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract
     /// @param data OrderData struct containing order values
@@ -98,7 +78,7 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         view
-        onlySelf
+        onlyTotle
         returns (uint256 amountToGive)
     {
         uint256 availableVolume = exchange.availableVolume(
@@ -120,7 +100,7 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /// @notice Perform exchange-specific checks on the given order
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// This should be called to check for payload errors.
@@ -131,7 +111,7 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         view
-        onlySelf
+        onlyTotle
         returns (bool checksPassed)
     {
         /* logger.log(block.number <= data.expires ? "Order isn't expired" : "Order is expired"); */
@@ -140,7 +120,7 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /// @notice Perform a buy order at the exchange
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract
     /// @param data OrderData struct containing order values
@@ -153,7 +133,7 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         payable
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         if (msg.value != amountToGiveForOrder) {
@@ -174,13 +154,13 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
         /* logger.log("Withdrawing tokens from EtherDelta arg2: amountReceivedFromOrder, arg3: amountSpentOnOrder", amountReceivedFromOrder, amountSpentOnOrder); */
         exchange.withdrawToken(data.tokenGive, amountReceivedFromOrder);
 
-        if (!ERC20SafeTransfer.safeTransfer(data.tokenGive, totlePrimary, amountReceivedFromOrder)) {
+        if (!ERC20SafeTransfer.safeTransfer(data.tokenGive, msg.sender, amountReceivedFromOrder)) {
             errorReporter.revertTx("Unable to transfer bought tokens to primary");
         }
     }
 
     /// @notice Perform a sell order at the exchange
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract
     /// @param data OrderData struct containing order values
@@ -192,7 +172,7 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
         uint256 amountToGiveForOrder
     )
         public
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         approveAddress(address(exchange), data.tokenGet);
@@ -212,7 +192,7 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
 
         exchange.withdraw(amountReceivedFromOrder);
         /* logger.log("Withdrawing ether arg2: amountReceived", amountReceivedFromOrder); */
-        address(totlePrimary).transfer(amountReceivedFromOrder);
+        msg.sender.transfer(amountReceivedFromOrder);
     }
 
     /*
@@ -276,6 +256,20 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
         returns (uint256)
     {
         return SafeMath.div(SafeMath.mul(numerator, target), denominator);
+    }
+
+    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
+        if (genericSelector == getAmountToGiveSelector) {
+            return bytes4(keccak256("getAmountToGive((address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32,uint256))"));
+        } else if (genericSelector == staticExchangeChecksSelector) {
+            return bytes4(keccak256("staticExchangeChecks((address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32,uint256))"));
+        } else if (genericSelector == performBuyOrderSelector) {
+            return bytes4(keccak256("performBuyOrder((address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32,uint256),uint256)"));
+        } else if (genericSelector == performSellOrderSelector) {
+            return bytes4(keccak256("performSellOrder((address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32,uint256),uint256)"));
+        } else {
+            return bytes4(0x0);
+        }
     }
 
     /*

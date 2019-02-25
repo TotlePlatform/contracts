@@ -6,6 +6,7 @@ import "../lib/ErrorReporter.sol";
 import "../lib/Math.sol";
 import "../lib/SafeMath.sol";
 import "./ExchangeHandler.sol";
+import "./SelectorProvider.sol";
 
 /// @title OasisInterface
 /// @notice Exchange contract interface
@@ -18,25 +19,6 @@ interface OasisInterface {
 interface WethInterface {
     function deposit() external payable;
     function withdraw(uint amount) external payable;
-}
-
-
-/// @title OasisSelectorProvider
-/// @notice Provides this exchange implementation with correctly formatted function selectors
-contract OasisSelectorProvider is SelectorProvider {
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGive) {
-            return bytes4(keccak256("getAmountToGive((uint256,uint256))"));
-        } else if (genericSelector == staticExchangeChecks) {
-            return bytes4(keccak256("staticExchangeChecks((uint256,uint256))"));
-        } else if (genericSelector == performBuyOrder) {
-            return bytes4(keccak256("performBuyOrder((uint256,uint256),uint256)"));
-        } else if (genericSelector == performSellOrder) {
-            return bytes4(keccak256("performSellOrder((uint256,uint256),uint256)"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
 }
 
 /// @title OasisHandler
@@ -64,17 +46,15 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
     /// @dev Calls the constructor of the inherited ExchangeHandler
     /// @param oasisAddress the address of the oasis exchange contract
     /// @param wethAddress the address of the weth contract
-    /// @param selectorProvider the provider for this exchanges function selectors
     /// @param totlePrimary the address of the totlePrimary contract
     constructor(
         address oasisAddress,
         address wethAddress,
-        address selectorProvider,
         address totlePrimary,
         address errorReporter
         /* , address logger */
     )
-        ExchangeHandler(selectorProvider, totlePrimary, errorReporter/*,logger*/)
+        ExchangeHandler(totlePrimary, errorReporter/*,logger*/)
         public
     {
         require(oasisAddress != address(0x0));
@@ -89,7 +69,7 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
     */
 
     /// @notice Gets the amount that Totle needs to give for this order
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -101,7 +81,7 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountToGive)
     {
         uint256 availableGetAmount;
@@ -113,7 +93,7 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
 
     /// @notice Perform exchange-specific checks on the given order
     /// @dev This function should be called to check for payload errors.
-    /// Uses the `onlySelf` modifier with public visibility as this function
+    /// Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -125,7 +105,7 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (bool checksPassed)
     {
 
@@ -151,7 +131,7 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /// @notice Perform a buy order at the exchange
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -166,14 +146,14 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
         public
         payable
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         /* logger.log("Performing Oasis buy order arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder", amountSpentOnOrder, amountReceivedFromOrder); */
         if (msg.value != amountToSpend){
 
             /* logger.log("Ether sent is not equal to amount to spend arg2: amountToSpend, arg3: msg.value", amountToSpend, msg.value); */
-            totlePrimary.transfer(msg.value);
+            msg.sender.transfer(msg.value);
             return (0,0);
         }
 
@@ -217,17 +197,17 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
         if (amountSpentOnOrder < amountToSpend){
           /* logger.log("Got some ether left, withdrawing arg2: amountSpentOnOrder, arg3: amountToSpend", amountSpentOnOrder, amountToSpend); */
           weth.withdraw(amountToSpend - amountSpentOnOrder);
-          totlePrimary.transfer(amountToSpend - amountSpentOnOrder);
+          msg.sender.transfer(amountToSpend - amountSpentOnOrder);
         }
 
         //Send the purchased tokens back to totlePrimary
-        if (!ERC20(payGem).transfer(totlePrimary, amountReceivedFromOrder)){
+        if (!ERC20(payGem).transfer(msg.sender, amountReceivedFromOrder)){
             errorReporter.revertTx("Unable to transfer bought tokens to totlePrimary");
         }
     }
 
     /// @notice Perform a sell order at the exchange
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -241,7 +221,7 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
       //Fetch offer data and validate buy gem is weth
@@ -266,7 +246,7 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
       uint256 amountToBuy = SafeMath.div( SafeMath.mul(amountToSpend, maxPayGem), maxBuyGem);
       if(amountToBuy == 0){
           /* logger.log("Amount to buy is zero, amountToSpend was likely too small to get any. Did the previous order fill all but a small amount? arg2: amountToSpend", amountToSpend); */
-          ERC20(buyGem).transfer(totlePrimary, amountToSpend);
+          ERC20(buyGem).transfer(msg.sender, amountToSpend);
           return (0, 0);
       }
       if (!oasis.buy(data.offerId, amountToBuy)){
@@ -284,12 +264,12 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
       //If we didn't spend all the tokens, withdraw it from weth and send back to totlePrimary
       if (amountSpentOnOrder < amountToSpend){
         /* logger.log("Got some tokens left, withdrawing arg2: amountSpentOnOrder, arg3: amountToSpend", amountSpentOnOrder, amountToSpend); */
-        ERC20(buyGem).transfer(totlePrimary, amountToSpend - amountSpentOnOrder);
+        ERC20(buyGem).transfer(msg.sender, amountToSpend - amountSpentOnOrder);
       }
 
       //Send the purchased tokens back to totlePrimary
       weth.withdraw(amountReceivedFromOrder);
-      totlePrimary.transfer(amountReceivedFromOrder);
+      msg.sender.transfer(amountReceivedFromOrder);
     }
 
     /// @notice Changes the current contract address set as WETH
@@ -302,6 +282,20 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
     {
         require(wethAddress != address(0x0));
         weth = WethInterface(wethAddress);
+    }
+
+    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
+        if (genericSelector == getAmountToGiveSelector) {
+            return bytes4(keccak256("getAmountToGive((uint256,uint256))"));
+        } else if (genericSelector == staticExchangeChecksSelector) {
+            return bytes4(keccak256("staticExchangeChecks((uint256,uint256))"));
+        } else if (genericSelector == performBuyOrderSelector) {
+            return bytes4(keccak256("performBuyOrder((uint256,uint256),uint256)"));
+        } else if (genericSelector == performSellOrderSelector) {
+            return bytes4(keccak256("performSellOrder((uint256,uint256),uint256)"));
+        } else {
+            return bytes4(0x0);
+        }
     }
 
     /*

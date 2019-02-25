@@ -7,6 +7,7 @@ import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
 import "../lib/ErrorReporter.sol";
 import "./ExchangeHandler.sol";
+import "./SelectorProvider.sol";
 
 interface UniswapExchange {
 
@@ -24,24 +25,6 @@ interface UniswapExchange {
    function tokenAddress() external constant returns (address);
 }
 
-/// @title UniswapSelectorProvider
-/// @notice Provides this exchange implementation with correctly formatted function selectors
-contract UniswapSelectorProvider is SelectorProvider {
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGive) {
-            return bytes4(keccak256("getAmountToGive((address,uint256))"));
-        } else if (genericSelector == staticExchangeChecks) {
-            return bytes4(keccak256("staticExchangeChecks((address,uint256))"));
-        } else if (genericSelector == performBuyOrder) {
-            return bytes4(keccak256("performBuyOrder((address,uint256),uint256)"));
-        } else if (genericSelector == performSellOrder) {
-            return bytes4(keccak256("performSellOrder((address,uint256),uint256)"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
-}
-
 /// @title Handler for Uniswap exchange
 contract UniswapHandler is ExchangeHandler, AllowanceSetter {
     /*
@@ -55,15 +38,13 @@ contract UniswapHandler is ExchangeHandler, AllowanceSetter {
 
 
     /// @notice Constructor
-    /// @param _selectorProvider the provider for this exchanges function selectors
     /// @param _totlePrimary the address of the totlePrimary contract
     /// @param errorReporter the address of of the errorReporter contract
     constructor(
-        address _selectorProvider,
         address _totlePrimary,
         address errorReporter/*,
         address logger*/
-    ) ExchangeHandler(_selectorProvider, _totlePrimary, errorReporter/*, logger*/) public {
+    ) ExchangeHandler(_totlePrimary, errorReporter/*, logger*/) public {
 
     }
 
@@ -81,7 +62,7 @@ contract UniswapHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountToGive)
     {
         amountToGive = data.amountToGive;
@@ -99,7 +80,7 @@ contract UniswapHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (bool checksPassed)
     {
         return true;
@@ -117,12 +98,12 @@ contract UniswapHandler is ExchangeHandler, AllowanceSetter {
         public
         payable
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         UniswapExchange ex = UniswapExchange(data.exchangeAddress);
         amountSpentOnOrder = amountToGiveForOrder;
-        amountReceivedFromOrder = ex.ethToTokenTransferInput.value(amountToGiveForOrder)(1, block.timestamp+1, totlePrimary);
+        amountReceivedFromOrder = ex.ethToTokenTransferInput.value(amountToGiveForOrder)(1, block.timestamp+1, msg.sender);
         /* logger.log("Performing Uniswap buy order arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder", amountSpentOnOrder, amountReceivedFromOrder);  */
 
     }
@@ -138,14 +119,28 @@ contract UniswapHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         UniswapExchange ex = UniswapExchange(data.exchangeAddress);
         approveAddress(data.exchangeAddress, ex.tokenAddress());
         amountSpentOnOrder = amountToGiveForOrder;
-        amountReceivedFromOrder = ex.tokenToEthTransferInput(amountToGiveForOrder, 1, block.timestamp+1, totlePrimary);
+        amountReceivedFromOrder = ex.tokenToEthTransferInput(amountToGiveForOrder, 1, block.timestamp+1, msg.sender);
         /* logger.log("Performing Uniswap sell order arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder",amountSpentOnOrder,amountReceivedFromOrder); */
+    }
+
+    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
+        if (genericSelector == getAmountToGiveSelector) {
+            return bytes4(keccak256("getAmountToGive((address,uint256))"));
+        } else if (genericSelector == staticExchangeChecksSelector) {
+            return bytes4(keccak256("staticExchangeChecks((address,uint256))"));
+        } else if (genericSelector == performBuyOrderSelector) {
+            return bytes4(keccak256("performBuyOrder((address,uint256),uint256)"));
+        } else if (genericSelector == performSellOrderSelector) {
+            return bytes4(keccak256("performSellOrder((address,uint256),uint256)"));
+        } else {
+            return bytes4(0x0);
+        }
     }
 
     /// @notice payable fallback to block EOA sending eth

@@ -7,6 +7,7 @@ import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
 import "../lib/ErrorReporter.sol";
 import "./ExchangeHandler.sol";
+import "./SelectorProvider.sol";
 
 interface ENSResolver {
     function getKyberNetworkAddress() external view returns (address);
@@ -17,24 +18,6 @@ interface Kyber {
     function trade(ERC20 src, uint srcAmount, ERC20 dest, address destAddress, uint maxDestAmount, uint minConversionRate, address walletId) external payable returns (uint);
     function maxGasPrice() external view returns(uint);
     function getExpectedRate(ERC20 source, ERC20 dest, uint srcQty) external view returns (uint expectedPrice, uint slippagePrice);
-}
-
-/// @title KyberSelectorProvider
-/// @notice Provides this exchange implementation with correctly formatted function selectors
-contract KyberSelectorProvider is SelectorProvider {
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGive) {
-            return bytes4(keccak256("getAmountToGive((address,address,uint256,uint256,address))"));
-        } else if (genericSelector == staticExchangeChecks) {
-            return bytes4(keccak256("staticExchangeChecks((address,address,uint256,uint256,address))"));
-        } else if (genericSelector == performBuyOrder) {
-            return bytes4(keccak256("performBuyOrder((address,address,uint256,uint256,address),uint256)"));
-        } else if (genericSelector == performSellOrder) {
-            return bytes4(keccak256("performSellOrder((address,address,uint256,uint256,address),uint256)"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
 }
 
 /// @title Interface for all exchange handler contracts
@@ -59,16 +42,14 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
 
     /// @notice Constructor
     /// @param _ensResolver Address of the ENS resolver
-    /// @param _selectorProvider the provider for this exchanges function selectors
     /// @param _totlePrimary the address of the totlePrimary contract
     constructor(
         address _ensResolver,
-        address _selectorProvider,
         address _totlePrimary,
         address errorReporter
         /* ,address logger */
     )
-        ExchangeHandler(_selectorProvider, _totlePrimary, errorReporter/*,logger*/)
+        ExchangeHandler(_totlePrimary, errorReporter/*,logger*/)
         public
     {
         ensResolver = ENSResolver(_ensResolver);
@@ -88,7 +69,7 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountToGive)
     {
         // Adds the exchange fee onto the available amount
@@ -107,7 +88,7 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (bool checksPassed)
     {
         uint256 maxGasPrice = resolveExchangeAddress().maxGasPrice();
@@ -127,7 +108,7 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
         public
         payable
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         amountSpentOnOrder = amountToGiveForOrder;
@@ -146,7 +127,7 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         approveAddress(address(resolveExchangeAddress()), data.tokenFrom);
@@ -168,7 +149,7 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
             ERC20(tokenFrom),
             amountToGive,
             ERC20(tokenTo),
-            totlePrimary,
+            msg.sender,
             Utils.max_uint(),
             minConversionRate,
             0x0
@@ -180,7 +161,7 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
         //       Change code to only return back what's left over from *this* transaction.
         if(address(this).balance > 0) {
             /* logger.log("Got excess ether back from Kyber arg2: address(this).balance",address(this).balance); */
-            totlePrimary.transfer(address(this).balance);
+            msg.sender.transfer(address(this).balance);
         }
     }
 
@@ -190,6 +171,20 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
         returns (Kyber)
     {
         return Kyber(ensResolver.getKyberNetworkAddress());
+    }
+
+    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
+        if (genericSelector == getAmountToGiveSelector) {
+            return bytes4(keccak256("getAmountToGive((address,address,uint256,uint256,address))"));
+        } else if (genericSelector == staticExchangeChecksSelector) {
+            return bytes4(keccak256("staticExchangeChecks((address,address,uint256,uint256,address))"));
+        } else if (genericSelector == performBuyOrderSelector) {
+            return bytes4(keccak256("performBuyOrder((address,address,uint256,uint256,address),uint256)"));
+        } else if (genericSelector == performSellOrderSelector) {
+            return bytes4(keccak256("performSellOrder((address,address,uint256,uint256,address),uint256)"));
+        } else {
+            return bytes4(0x0);
+        }
     }
 
     /// @notice payable fallback to block EOA sending eth

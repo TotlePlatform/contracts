@@ -22,28 +22,8 @@ interface WeiDex {
     function balances(address token, address user) external view returns (uint256);
 }
 
-
-
-/// @title EtherDeltaSelectorProvider
-/// @notice Provides this exchange implementation with correctly formatted function selectors
-contract WeiDexSelectorProvider is SelectorProvider {
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGive) {
-            return bytes4(keccak256("getAmountToGive((address[3],uint256[3],uint8,bytes32,bytes32))"));
-        } else if (genericSelector == staticExchangeChecks) {
-            return bytes4(keccak256("staticExchangeChecks((address[3],uint256[3],uint8,bytes32,bytes32))"));
-        } else if (genericSelector == performBuyOrder) {
-            return bytes4(keccak256("performBuyOrder((address[3],uint256[3],uint8,bytes32,bytes32),uint256)"));
-        } else if (genericSelector == performSellOrder) {
-            return bytes4(keccak256("performSellOrder((address[3],uint256[3],uint8,bytes32,bytes32),uint256)"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
-}
-
-/// @title EtherDeltaHandler
-/// @notice Handles the all EtherDelta trades for the primary contract
+/// @title WeiDexHandler
+/// @notice Handles the all WeiDex trades for the primary contract
 contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
 
     /*
@@ -65,18 +45,16 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /// @notice Constructor
-    /// @param _exchange Address of the EtherDelta exchange
-    /// @param selectorProvider the provider for this exchanges function selectors
+    /// @param _exchange Address of the WeiDex exchange
     /// @param totlePrimary the address of the totlePrimary contract
     /// @param errorReporter the address of the error reporter contract
     constructor(
         address _exchange,
-        address selectorProvider,
         address totlePrimary,
         address errorReporter
         /* ,address logger */
     )
-        ExchangeHandler(selectorProvider, totlePrimary, errorReporter/*, logger*/)
+        ExchangeHandler(totlePrimary, errorReporter/*, logger*/)
         public
     {
         require(_exchange != address(0x0));
@@ -88,7 +66,7 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
     */
 
     /// @notice Gets the amount that Totle needs to give for this order
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract
     /// @param order OrderData struct containing order values
@@ -98,7 +76,7 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         view
-        onlySelf
+        onlyTotle
         returns (uint256 amountToGive)
     {
         amountToGive = getAvailableTakerVolume(order);
@@ -106,7 +84,7 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /// @notice Perform exchange-specific checks on the given order
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// This should be called to check for payload errors.
@@ -117,7 +95,7 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         view
-        onlySelf
+        onlyTotle
         returns (bool checksPassed)
     {
         bool correctMaker = order.addresses[0] == ecrecover(keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", createHash(order))), order.v, order.r, order.s);
@@ -127,7 +105,7 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /// @notice Perform a buy order at the exchange
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract
     /// @param order OrderData struct containing order values
@@ -140,7 +118,7 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         payable
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         /* logger.log("Depositing eth to weiDex arg2: amountToGiveForOrder, arg3: ethBalance", amountToGiveForOrder, address(this).balance); */
@@ -153,11 +131,16 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
         amountSpentOnOrder = amountToGiveForOrder;
         amountReceivedFromOrder = SafeMath.div(SafeMath.mul(amountToGiveForOrder, order.values[0]), order.values[1]);
         amountReceivedFromOrder = SafeMath.sub(amountReceivedFromOrder, SafeMath.div(amountReceivedFromOrder, feeRate)); //Remove fee
+        exchange.withdrawTokens(order.addresses[1], amountReceivedFromOrder);
+        if (!ERC20SafeTransfer.safeTransfer(order.addresses[1], msg.sender, amountReceivedFromOrder)) {
+            errorReporter.revertTx("Unable to transfer bought tokens to primary");
+        }
+
         /* logger.log("Withdrawing tokens from weiDex arg2: amountReceivedFromOrder, arg3: amountSpentOnOrder", amountReceivedFromOrder, amountSpentOnOrder); */
     }
 
     /// @notice Perform a sell order at the exchange
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract
     /// @param order OrderData struct containing order values
@@ -169,7 +152,7 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
         uint256 amountToGiveForOrder
     )
         public
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         approveAddress(address(exchange), order.addresses[2]);
@@ -187,7 +170,7 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
 
         exchange.withdrawEthers(amountReceivedFromOrder);
         /* logger.log("Withdrawing ether arg2: amountReceived", amountReceivedFromOrder); */
-        address(totlePrimary).transfer(amountReceivedFromOrder);
+        msg.sender.transfer(amountReceivedFromOrder);
     }
 
     /**
@@ -241,6 +224,19 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
         return Math.min(remainingTakerVolumeFromFilled, remainingTakerVolumeFromMakerBalance);
     }
 
+    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
+        if (genericSelector == getAmountToGiveSelector) {
+            return bytes4(keccak256("getAmountToGive((address[3],uint256[3],uint8,bytes32,bytes32))"));
+        } else if (genericSelector == staticExchangeChecksSelector) {
+            return bytes4(keccak256("staticExchangeChecks((address[3],uint256[3],uint8,bytes32,bytes32))"));
+        } else if (genericSelector == performBuyOrderSelector) {
+            return bytes4(keccak256("performBuyOrder((address[3],uint256[3],uint8,bytes32,bytes32),uint256)"));
+        } else if (genericSelector == performSellOrderSelector) {
+            return bytes4(keccak256("performSellOrder((address[3],uint256[3],uint8,bytes32,bytes32),uint256)"));
+        } else {
+            return bytes4(0x0);
+        }
+    }
 
     /*
     *   Payable fallback function

@@ -57,7 +57,7 @@ library Utils {
 
             switch success
             case 0 {
-                decimals := 18 // If the token doesn't implement `decimals()`, return 18 as default
+                decimals := 0 // If the token doesn't implement `decimals()`, return 0 as default
             }
             case 1 {
                 decimals := mload(ptr) // Set decimals to return data from call

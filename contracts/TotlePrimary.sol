@@ -9,6 +9,7 @@ import "./lib/Utils.sol";
 import "./lib/ErrorReporter.sol";
 /* import "./lib/Logger.sol"; */
 import "./lib/ERC20SafeTransfer.sol";
+import "./lib/AffiliateRegistry.sol";
 import "./exchange_handlers/ExchangeHandler.sol";
 
 /// @title The primary contract for Totle
@@ -20,8 +21,10 @@ contract TotlePrimary is Withdrawable, Pausable {
 
     mapping(address => bool) public handlerWhitelistMap;
     address[] public handlerWhitelistArray;
+    AffiliateRegistry affiliateRegistry;
+    address public defaultFeeAccount;
 
-    address public tokenTransferProxy;
+    TokenTransferProxy public tokenTransferProxy;
     ErrorReporter public errorReporter;
     /* Logger public logger; */
 
@@ -61,7 +64,9 @@ contract TotlePrimary is Withdrawable, Pausable {
     */
 
     event LogRebalance(
-        bytes32 id
+        bytes32 id,
+        uint256 totalEthTraded,
+        uint256 totalFee
     );
 
     /*
@@ -85,18 +90,25 @@ contract TotlePrimary is Withdrawable, Pausable {
     /// @notice Constructor
     /// @param _tokenTransferProxy address of the TokenTransferProxy
     /// @param _errorReporter the address of the error reporter contract
-    constructor (address _tokenTransferProxy, address _errorReporter/*, address _logger*/) public {
-        require(_tokenTransferProxy != address(0x0));
-        require(_errorReporter != address(0x0));
+    constructor (address _tokenTransferProxy, address _affiliateRegistry, address _errorReporter, address _defaultFeeAccount/*, address _logger*/) public {
         /* require(_logger != address(0x0)); */
-        tokenTransferProxy = _tokenTransferProxy;
+        tokenTransferProxy = TokenTransferProxy(_tokenTransferProxy);
+        affiliateRegistry = AffiliateRegistry(_affiliateRegistry);
         errorReporter = ErrorReporter(_errorReporter);
+        defaultFeeAccount = _defaultFeeAccount;
         /* logger = Logger(_logger); */
     }
 
     /*
     *   Public functions
     */
+
+    /// @notice Update the default fee account
+    /// @dev onlyOwner modifier only allows the contract owner to run the code
+    /// @param newDefaultFeeAccount new default fee account
+    function updateDefaultFeeAccount(address newDefaultFeeAccount) public onlyOwner {
+        defaultFeeAccount = newDefaultFeeAccount;
+    }
 
     /// @notice Add an exchangeHandler address to the whitelist
     /// @dev onlyOwner modifier only allows the contract owner to run the code
@@ -127,17 +139,24 @@ contract TotlePrimary is Withdrawable, Pausable {
             }
         }
     }
-
+    event LogTrade(bool isSell, address token, uint256 ethAmount, uint256 tokenAmount)
     /// @notice Performs the requested portfolio rebalance
     /// @param trades A dynamic array of trade structs
     function performRebalance(
-        Trade[] trades,
+        Trade[] memory trades,
+        address feeAccount,
         bytes32 id
     )
         public
         payable
         whenNotPaused
     {
+        if(!affiliateRegistry.isValidAffiliate(feeAccount)){
+            feeAccount = defaultFeeAccount;
+        }
+        Affiliate affiliate = Affiliate(feeAccount);
+        uint256 feePercentage = affiliate.getTotalFeePercentage();
+
         emit LogRebalance(id);
         /* logger.log("Starting Rebalance..."); */
 
@@ -152,17 +171,17 @@ contract TotlePrimary is Withdrawable, Pausable {
         /* logger.log("Tokens transferred."); */
 
         uint256 etherBalance = msg.value;
-
+        uint256 totalFee = 0;
         /* logger.log("Ether balance arg2: etherBalance.", etherBalance); */
-
-        for (uint256 i; i < trades.length; i++) {
+        uint256 totalTraded = 0;
+        for (uint256 i; i < trades.length; i++) {amountTokens
             Trade memory thisTrade = trades[i];
             TradeFlag memory thisTradeFlag = tradeFlags[i];
 
             CurrentAmounts memory amounts = CurrentAmounts({
                 amountSpentOnTrade: 0,
                 amountReceivedFromTrade: 0,
-                amountLeftToSpendOnTrade: thisTrade.isSell ? thisTrade.tokenAmount : calculateMaxEtherSpend(thisTrade, etherBalance)
+                amountLeftToSpendOnTrade: thisTrade.isSell ? thisTrade.tokenAmount : calculateMaxEtherSpend(thisTrade, etherBalance, feePercentage)
             });
             /* logger.log("Going to perform trade. arg2: amountLeftToSpendOnTrade", amounts.amountLeftToSpendOnTrade); */
 
@@ -171,7 +190,18 @@ contract TotlePrimary is Withdrawable, Pausable {
                 thisTradeFlag,
                 amounts
             );
+            emit TradeLog(thisTrade.isSell, thisTrade.tokenAddress, thisTrade.isSell ? aamounts.amountReceivedFromTrade:amounts.amountSpentOnTrade, thisTrade.isSell?amounts.amountSpentOnTrade:amounts.amountReceivedFromTrade);
 
+            uint256 ethTraded;
+            uint256 ethFee;
+            if(thisTrade.isSell){
+                ethTraded = amounts.amountReceivedFromTrade;
+            } else {
+                ethTraded = amounts.amountSpentOnTrade;
+            }
+            totalTraded += ethTraded;
+            ethFee = calculateFee(ethTraded, feePercentage);
+            totalFee = SafeMath.add(totalFee, ethFee);
             /* logger.log("Finished performing trade arg2: amountReceivedFromTrade, arg3: amountSpentOnTrade.", amounts.amountReceivedFromTrade, amounts.amountSpentOnTrade); */
 
             if (amounts.amountReceivedFromTrade == 0 && thisTrade.optionalTrade) {
@@ -197,14 +227,14 @@ contract TotlePrimary is Withdrawable, Pausable {
                     etherBalance,
                     amounts.amountReceivedFromTrade
                 ); */
-                etherBalance = SafeMath.add(etherBalance, amounts.amountReceivedFromTrade);
+                etherBalance = SafeMath.sub(SafeMath.add(etherBalance, ethTraded), ethFee);
             } else {
                 /* logger.log(
                     "This is a buy trade, deducting ether from our balance arg2: etherBalance, arg3: amountSpentOnTrade",
                     etherBalance,
                     amounts.amountSpentOnTrade
                 ); */
-                etherBalance = SafeMath.sub(etherBalance, amounts.amountSpentOnTrade);
+                etherBalance = SafeMath.sub(SafeMath.sub(etherBalance, ethTraded), ethFee);
             }
 
             /* logger.log("Transferring tokens to the user arg:6 tokenAddress.", 0,0,0,0, thisTrade.tokenAddress); */
@@ -215,7 +245,10 @@ contract TotlePrimary is Withdrawable, Pausable {
             );
 
         }
-
+        emit LogRebalance(id, totalTraded, totalFee)
+        if(totalFee > 0){
+            feeAccount.transfer(totalFee);
+        }
         if(etherBalance > 0) {
             /* logger.log("Got a positive ether balance, sending to the user arg2: etherBalance.", etherBalance); */
             msg.sender.transfer(etherBalance);
@@ -243,7 +276,7 @@ contract TotlePrimary is Withdrawable, Pausable {
                     errorReporter.revertTx("A buy has occured before this sell");
                 }
 
-                if (!Utils.tokenAllowanceAndBalanceSet(msg.sender, thisTrade.tokenAddress, thisTrade.tokenAmount, tokenTransferProxy)) {
+                if (!Utils.tokenAllowanceAndBalanceSet(msg.sender, thisTrade.tokenAddress, thisTrade.tokenAmount, address(tokenTransferProxy))) {
                     if (!thisTrade.optionalTrade) {
                         errorReporter.revertTx("Taker has not sent allowance/balance on a non-optional trade");
                     }
@@ -323,8 +356,8 @@ contract TotlePrimary is Withdrawable, Pausable {
     /// @param amounts a struct containing information about amounts spent
     /// and received in the rebalance
     function performTrade(
-        Trade trade,
-        TradeFlag tradeFlag,
+        Trade memory trade,
+        TradeFlag memory tradeFlag,
         CurrentAmounts amounts
     )
         internal
@@ -333,15 +366,11 @@ contract TotlePrimary is Withdrawable, Pausable {
 
         for (uint256 j; j < trade.orders.length; j++) {
 
-            /* logger.log("Processing order arg2: orderIndex", j); */
+            if(amounts.amountLeftToSpendOnTrade * 10000 < (amounts.amountSpentOnTrade + amounts.amountLeftToSpendOnTrade)){
+                return;
+            }
 
-            //TODO: Change to the amount of tokens that we are trying to get
-            if( amounts.amountReceivedFromTrade >= trade.minimumAcceptableTokenAmount ) {
-                /* logger.log(
-                    "Got the desired amount from the trade arg2: amountReceivedFromTrade, arg3: minimumAcceptableTokenAmount",
-                    amounts.amountReceivedFromTrade,
-                    trade.minimumAcceptableTokenAmount
-                ); */
+            if((trade.isSell ? amounts.amountSpentOnTrade : amounts.amountReceivedFromTrade) >= trade.tokenAmount ) {
                 return;
             }
 
@@ -439,13 +468,13 @@ contract TotlePrimary is Withdrawable, Pausable {
         uint256 tokenAmount = trade.isSell ? amountSpentOnTrade : amountReceivedFromTrade;
         passed = tokenAmount >= trade.minimumAcceptableTokenAmount;
 
-        if( !passed ) {
-            /* logger.log(
+        /*if( !passed ) {
+             logger.log(
                 "Received less than minimum acceptable tokens arg2: tokenAmount , arg3: minimumAcceptableTokenAmount.",
                 tokenAmount,
                 trade.minimumAcceptableTokenAmount
-            ); */
-        }
+            );
+        }*/
 
         if (passed) {
             uint256 tokenDecimals = Utils.getDecimals(ERC20(trade.tokenAddress));
@@ -455,13 +484,13 @@ contract TotlePrimary is Withdrawable, Pausable {
             passed = actualRate >= trade.minimumExchangeRate;
         }
 
-        if( !passed ) {
-            /* logger.log(
+        /*if( !passed ) {
+             logger.log(
                 "Order rate was lower than minimum acceptable,  rate arg2: actualRate, arg3: minimumExchangeRate.",
                 actualRate,
                 trade.minimumExchangeRate
-            ); */
-        }
+            );
+        }*/
     }
 
     /// @notice Iterates through a list of token orders, transfer the SELL orders to this contract & calculates if we have the ether needed
@@ -480,7 +509,7 @@ contract TotlePrimary is Withdrawable, Pausable {
                     trades[i].tokenAddress
                 ); */
                 if (
-                    !TokenTransferProxy(tokenTransferProxy).transferFrom(
+                    !tokenTransferProxy.transferFrom(
                         trades[i].tokenAddress,
                         msg.sender,
                         address(this),
@@ -497,7 +526,7 @@ contract TotlePrimary is Withdrawable, Pausable {
     /// @param trade the buy trade to return the spend amount for
     /// @param etherBalance the amount of ether that we currently have to spend
     /// @return uint256 the maximum amount of ether we should spend on this trade
-    function calculateMaxEtherSpend(Trade trade, uint256 etherBalance) internal view returns (uint256) {
+    function calculateMaxEtherSpend(Trade trade, uint256 etherBalance, uint256 feePercentage) internal view returns (uint256) {
         /// @dev This function should never be called for a sell
         assert(!trade.isSell);
 
@@ -506,9 +535,22 @@ contract TotlePrimary is Withdrawable, Pausable {
         uint256 destDecimals = trade.isSell ? Utils.eth_decimals() : tokenDecimals;
         uint256 maxSpendAtMinRate = Utils.calcSrcQty(trade.tokenAmount, srcDecimals, destDecimals, trade.minimumExchangeRate);
 
-        return Utils.min(etherBalance, maxSpendAtMinRate);
+        return Utils.min(removeFee(etherBalance, feePercentage), maxSpendAtMinRate);
     }
 
+    // @notice Calculates the fee amount given a fee percentage and amount
+    // @param amount the amount to calculate the fee based on
+    // @param fee the percentage, out of 1 eth (e.g. 0.01 ETH would be 1%)
+    function calculateFee(uint256 amount, uint256 fee) internal view returns (uint256){
+        return SafeMath.div(SafeMath.mul(amount, fee), 1 ether);
+    }
+
+    // @notice Calculates the cost if amount=cost+fee
+    // @param amount the amount to calculate the base on
+    // @param fee the percentage, out of 1 eth (e.g. 0.01 ETH would be 1%)
+    function removeFee(uint256 amount, uint256 fee) internal view returns (uint256){
+        return SafeMath.div(SafeMath.mul(amount, 1 ether), SafeMath.add(fee, 1 ether));
+    }
     /*
     *   Payable fallback function
     */

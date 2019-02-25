@@ -7,11 +7,11 @@ import "./Ownable.sol";
 /// @dev Defines a modifier which should be used when only the totle contract should
 /// able able to call a function
 contract TotleControl is Ownable {
-    address public totlePrimary;
+    mapping(address => bool) public authorizedPrimaries;
 
     /// @dev A modifier which only allows code execution if msg.sender equals totlePrimary address
     modifier onlyTotle() {
-        require(msg.sender == totlePrimary);
+        require(authorizedPrimaries[msg.sender]);
         _;
     }
 
@@ -19,17 +19,21 @@ contract TotleControl is Ownable {
     /// @dev As this contract inherits ownable, msg.sender will become the contract owner
     /// @param _totlePrimary the address of the contract to be set as totlePrimary
     constructor(address _totlePrimary) public {
-        require(_totlePrimary != address(0x0));
-        totlePrimary = _totlePrimary;
+        authorizedPrimaries[_totlePrimary] = true;
     }
 
     /// @notice A function which allows only the owner to change the address of totlePrimary
     /// @dev onlyOwner modifier only allows the contract owner to run the code
     /// @param _totlePrimary the address of the contract to be set as totlePrimary
-    function setTotle(
+    function addTotle(
         address _totlePrimary
     ) external onlyOwner {
-        require(_totlePrimary != address(0x0));
-        totlePrimary = _totlePrimary;
+        authorizedPrimaries[_totlePrimary] = true;
+    }
+
+    function removeTotle(
+        address _totlePrimary
+    ) external onlyOwner {
+        authorizedPrimaries[_totlePrimary] = false;
     }
 }

@@ -34,24 +34,6 @@ interface AirSwap {
     ) external payable;
 }
 
-/// @title AirSwapSelectorProvider
-/// @notice Provides this exchange implementation with correctly formatted function selectors
-contract AirSwapSelectorProvider is SelectorProvider {
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGive) {
-            return bytes4(keccak256("getAmountToGive((address,address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32))"));
-        } else if (genericSelector == staticExchangeChecks) {
-            return bytes4(keccak256("staticExchangeChecks((address,address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32))"));
-        } else if (genericSelector == performBuyOrder) {
-            return bytes4(keccak256("performBuyOrder((address,address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32),uint256)"));
-        } else if (genericSelector == performSellOrder) {
-            return bytes4(keccak256("performSellOrder((address,address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32),uint256)"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
-}
-
 /// @title AirSwapHandler
 /// @notice Handles the all AirSwap trades for the primary contract
 contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
@@ -85,18 +67,16 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
     /// @dev Calls the constructor of the inherited ExchangeHandler
     /// @param _exchange Address of the AirSwap exchange
     /// @param _weth Address of the weth contract we are using
-    /// @param selectorProvider the provider for this exchanges function selectors
     /// @param totlePrimary the address of the totlePrimary contract
     /// @param errorReporter the address of the error reporter contract
     constructor(
         address _exchange,
         address _weth,
-        address selectorProvider,
         address totlePrimary,
         address errorReporter
         /* ,address logger */
     )
-        ExchangeHandler(selectorProvider, totlePrimary, errorReporter/*, logger*/)
+        ExchangeHandler(totlePrimary, errorReporter/*, logger*/)
         public
     {
         require(_exchange != address(0x0));
@@ -110,7 +90,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
     */
 
     /// @notice Gets the amount that Totle needs to give for this order
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -122,7 +102,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountToGive)
     {
         return data.takerAmount;
@@ -130,7 +110,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
 
     /// @notice Perform exchange-specific checks on the given order
     /// @dev This function should be called to check for payload errors.
-    /// Uses the `onlySelf` modifier with public visibility as this function
+    /// Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -142,7 +122,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (bool checksPassed)
     {
         bytes32 orderHash;
@@ -161,7 +141,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /// @notice Perform a buy order at the exchange
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract.
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -176,7 +156,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
         public
         payable
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         /* logger.log("Performing AirSwap buy arg2: amountToGiveForOrder", amountToGiveForOrder); */
@@ -187,7 +167,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
                 amountToGiveForOrder,
                 msg.value
             ); */
-            totlePrimary.transfer(msg.value);
+            msg.sender.transfer(msg.value);
             return (0,0);
         }
 
@@ -195,7 +175,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
 
         /* logger.log("Filled and validated"); */
 
-        if (!ERC20SafeTransfer.safeTransfer(data.makerToken, totlePrimary, data.makerAmount)) {
+        if (!ERC20SafeTransfer.safeTransfer(data.makerToken, msg.sender, data.makerAmount)) {
             errorReporter.revertTx("AirSwap: Unable to transfer bought tokens to primary");
         }
 
@@ -203,7 +183,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /// @notice Perform a sell order at the exchange
-    /// @dev Uses the `onlySelf` modifier with public visibility as this function
+    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
     /// should only be called from functions which are inherited from the ExchangeHandler
     /// base contract
     /// Uses `whenNotPaused` modifier to revert transactions when contract is "paused".
@@ -217,7 +197,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         /* logger.log("Performing AirSwap sell arg2: amountToGiveForOrder", amountToGiveForOrder); */
@@ -243,7 +223,7 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
 
         /* logger.log("WETH withdrawal arg2: makerAmount", data.makerAmount); */
 
-        totlePrimary.transfer(data.makerAmount);
+        msg.sender.transfer(data.makerAmount);
 
         /* logger.log("Transfered WETH to Primary"); */
 
@@ -304,6 +284,20 @@ contract AirSwapHandler is ExchangeHandler, AllowanceSetter {
 
         if (!exchange.fills(orderHash)) {
             errorReporter.revertTx("AirSwap: Order failed validation after execution");
+        }
+    }
+
+    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
+        if (genericSelector == getAmountToGiveSelector) {
+            return bytes4(keccak256("getAmountToGive((address,address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32))"));
+        } else if (genericSelector == staticExchangeChecksSelector) {
+            return bytes4(keccak256("staticExchangeChecks((address,address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32))"));
+        } else if (genericSelector == performBuyOrderSelector) {
+            return bytes4(keccak256("performBuyOrder((address,address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32),uint256)"));
+        } else if (genericSelector == performSellOrderSelector) {
+            return bytes4(keccak256("performSellOrder((address,address,address,address,uint256,uint256,uint256,uint256,uint8,bytes32,bytes32),uint256)"));
+        } else {
+            return bytes4(0x0);
         }
     }
 

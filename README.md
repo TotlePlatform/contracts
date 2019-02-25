@@ -26,21 +26,24 @@ The payload is split into separate trades (e.g. buy ZRX, sell OMG), each of whic
 
 A count is kept of the amounts spent and acquired, and after each trade the primary contract performs a check to ensure that all orders were executed equal to or above the minimum exchange rate. Subsequent to the execution of all trades, any ether gained through tokens sales is returned to the user and execution is completed.
 
+After each trade is executed, the total amount of eth traded (amount spent on a buy and amount received on a sell) is calculated, and at the end of a rebalance, the fee is taken from that amount and sent to the appropriate affiliate contract.
+
 ## 2.  Future Directions
 Our key focus for the development of our smart contract platform revolves around extensibility, gas optimization and security. Security is paramount and whilst the contracts have currently undergone an internal audit, talks are in place for a full external audit prior to official launch.
 
 Under the current payload design we are somewhat limited by what exchanges we are able to support for each DEX order. With the upcoming changes in version 0.5.0 of Solidity, we hope to utilize updates to the ABI encoder, allowing nesting of dynamic data types such as structs and arrays.
 
 ## 3. Contract Addresses
-- TotlePrimary - [0x476a0a98beaae3e7e451ccd46e50fb465ae540bb](https://etherscan.io/address/0x476a0a98beaae3e7e451ccd46e50fb465ae540bb)
+- TotlePrimary - [0x99ECA38B58cEEaf0FeD5351DF21D5B4C55995314](https://etherscan.io/address/0x99ECA38B58cEEaf0FeD5351DF21D5B4C55995314)
 - TokenTransferProxy - [0x74758AcFcE059f503a7E6B0fC2c8737600f9F2c4](https://etherscan.io/address/0x74758AcFcE059f503a7E6B0fC2c8737600f9F2c4)
-- EtherDeltaHandler - [0xef781199d290080194b66146dc448e99e08d7daa](https://etherscan.io/address/0xef781199d290080194b66146dc448e99e08d7daa)
-- KyberHandler - [0x7f9eb892d0ce10ea52905d15bb618ff8d0c947d3](https://etherscan.io/address/0x7f9eb892d0ce10ea52905d15bb618ff8d0c947d3)
-- BancorHandler - [0x0a2631A499813Bb47De7490a4845AAbee8062b6F](https://etherscan.io/address/0x0a2631A499813Bb47De7490a4845AAbee8062b6F)
-- ZeroXHandler - [0x3Ad91E16d9b59A065650f65e864f1f5ffB0c1aF3](https://etherscan.io/address/0x3Ad91E16d9b59A065650f65e864f1f5ffB0c1aF3)
-- AirSwapHandler - [0xC4C713b1043c48808F72e375Aa061f547835C1B8](https://etherscan.io/address/0xC4C713b1043c48808F72e375Aa061f547835C1B8)
-- EthexHandler - [0x30f37f9189ECCeC4aA75DFa431531175251C4b06](https://etherscan.io/address/0x30f37f9189ECCeC4aA75DFa431531175251C4b06)
-- OasisHandler - [0x14a03814b7308D71DfE141CcC0e25E77b7AF5Cd6](https://etherscan.io/address/0x14a03814b7308D71DfE141CcC0e25E77b7AF5Cd6)
-- TokenStoreHandler - [0xe81b4c063F106be42b854D605f5d6738E161e44d](https://etherscan.io/address/0xe81b4c063F106be42b854D605f5d6738E161e44d)
-- UniswapHandler - [0x5c5316650F2C15BbE738F51D8e24A2A00ee63e25](https://etherscan.io/address/0x5c5316650F2C15BbE738F51D8e24A2A00ee63e25)
-- WeiDexHandler - [0x855a160c02b841e98d2ee84398be65cc472cab68](https://etherscan.io/address/0x855a160c02b841e98d2ee84398be65cc472cab68)
+- AffiliateRegistry - [0x18CC055089e2EdA27bF2F477dDdd6B1Cf082e001](https://etherscan.io/address/0x18CC055089e2EdA27bF2F477dDdd6B1Cf082e001)
+- EtherDeltaHandler - [0xe49b07729c82a520bc57b96f3552fe73a248cc28](https://etherscan.io/address/0xe49b07729c82a520bc57b96f3552fe73a248cc28)
+- KyberHandler - [0x1cF25983e8Bf48AA1f532F956B8A176761b76206](https://etherscan.io/address/0x1cF25983e8Bf48AA1f532F956B8A176761b76206)
+- BancorHandler - [0x7870fBeE25b0BE0C247a9b3299bb6F30d8174E6b](https://etherscan.io/address/0x7870fBeE25b0BE0C247a9b3299bb6F30d8174E6b)
+- ZeroXHandler - [0x6D2fFFa3dAE1A5F68e13BF4be837eB10078Ceeb4](https://etherscan.io/address/0x6D2fFFa3dAE1A5F68e13BF4be837eB10078Ceeb4)
+- AirSwapHandler - [0x82b38A8D71B1054f60DccD563e17968B891ae52e](https://etherscan.io/address/0x82b38A8D71B1054f60DccD563e17968B891ae52e)
+- EthexHandler - [0x8aa9babf31f01673112c4d0c1c9f07e31ade1cfe](https://etherscan.io/address/0x8aa9babf31f01673112c4d0c1c9f07e31ade1cfe)
+- OasisHandler - [0xede4dbf35b09e8085c389c8bbedb0f289773ac97](https://etherscan.io/address/0xede4dbf35b09e8085c389c8bbedb0f289773ac97)
+- TokenStoreHandler - [0xe4D4460E9B99CB8F464C94cC3AD7F8Ee4bcD38C2](https://etherscan.io/address/0xe4D4460E9B99CB8F464C94cC3AD7F8Ee4bcD38C2)
+- UniswapHandler - [0x2AF14b279C08d3627D34A5d8734c2eD771F3eF41](https://etherscan.io/address/0x2AF14b279C08d3627D34A5d8734c2eD771F3eF41)
+- WeiDexHandler - [0x0C01F7359A6bb3679a2048507a2A413A59cc3224](https://etherscan.io/address/0x0C01F7359A6bb3679a2048507a2A413A59cc3224)

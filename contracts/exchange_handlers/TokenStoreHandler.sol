@@ -7,6 +7,7 @@ import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
 import "../lib/ErrorReporter.sol";
 import "./ExchangeHandler.sol";
+import "./SelectorProvider.sol";
 
 interface TokenStoreExchange {
 
@@ -25,24 +26,6 @@ interface TokenStoreExchange {
    function depositToken(address _token, uint _amount) external;
    function withdrawToken(address _token, uint _amount) external;
 
-}
-
-/// @title TokenStoreSelectorProvider
-/// @notice Provides this exchange implementation with correctly formatted function selectors
-contract TokenStoreSelectorProvider is SelectorProvider {
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGive) {
-            return bytes4(keccak256("getAmountToGive((address,uint256,address,uint256,uint256,uint256,address,uint8,bytes32,bytes32))"));
-        } else if (genericSelector == staticExchangeChecks) {
-            return bytes4(keccak256("staticExchangeChecks((address,uint256,address,uint256,uint256,uint256,address,uint8,bytes32,bytes32))"));
-        } else if (genericSelector == performBuyOrder) {
-            return bytes4(keccak256("performBuyOrder((address,uint256,address,uint256,uint256,uint256,address,uint8,bytes32,bytes32),uint256)"));
-        } else if (genericSelector == performSellOrder) {
-            return bytes4(keccak256("performSellOrder((address,uint256,address,uint256,uint256,uint256,address,uint8,bytes32,bytes32),uint256)"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
 }
 
 /// @title Handler for TokenStore exchange
@@ -69,16 +52,14 @@ contract TokenStoreHandler is ExchangeHandler, AllowanceSetter {
 
     /// @notice Constructor
     /// @param _exchange the address of the token store exchange
-    /// @param _selectorProvider the provider for this exchanges function selectors
     /// @param _totlePrimary the address of the totlePrimary contract
     /// @param errorReporter the address of of the errorReporter contract
     constructor(
         address _exchange,
-        address _selectorProvider,
         address _totlePrimary,
         address errorReporter/*,
         address logger*/
-    ) ExchangeHandler(_selectorProvider, _totlePrimary, errorReporter/*, logger*/) public {
+    ) ExchangeHandler(_totlePrimary, errorReporter/*, logger*/) public {
         exchange = TokenStoreExchange(_exchange);
     }
 
@@ -96,7 +77,7 @@ contract TokenStoreHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountToGive)
     {
         uint256 feePercentage = exchange.fee();
@@ -118,7 +99,7 @@ contract TokenStoreHandler is ExchangeHandler, AllowanceSetter {
         public
         view
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (bool checksPassed)
     {
         bytes32 hash = sha256(abi.encodePacked(address(exchange), data.takerToken, data.takerAmount, data.makerToken, data.makerAmount, data.expires, data.nonce));
@@ -140,7 +121,7 @@ contract TokenStoreHandler is ExchangeHandler, AllowanceSetter {
         public
         payable
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         amountSpentOnOrder = amountToGiveForOrder;
@@ -150,7 +131,7 @@ contract TokenStoreHandler is ExchangeHandler, AllowanceSetter {
         exchange.trade(data.takerToken, data.takerAmount, data.makerToken, data.makerAmount, data.expires, data.nonce, data.user, data.v, data.r, data.s, amountToSpend);
         /* logger.log("Performing TokenStore buy order arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder", amountSpentOnOrder, amountReceivedFromOrder);  */
         exchange.withdrawToken(data.makerToken, amountReceivedFromOrder);
-        if (!ERC20SafeTransfer.safeTransfer(data.makerToken, totlePrimary, amountReceivedFromOrder)){
+        if (!ERC20SafeTransfer.safeTransfer(data.makerToken, msg.sender, amountReceivedFromOrder)){
             errorReporter.revertTx("Failed to transfer tokens to totle primary");
         }
 
@@ -167,7 +148,7 @@ contract TokenStoreHandler is ExchangeHandler, AllowanceSetter {
     )
         public
         whenNotPaused
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         amountSpentOnOrder = amountToGiveForOrder;
@@ -178,13 +159,27 @@ contract TokenStoreHandler is ExchangeHandler, AllowanceSetter {
         exchange.trade(data.takerToken, data.takerAmount, data.makerToken, data.makerAmount, data.expires, data.nonce, data.user, data.v, data.r, data.s, amountToSpend);
         /* logger.log("Performing TokenStore sell order arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder",amountSpentOnOrder,amountReceivedFromOrder); */
         exchange.withdraw(amountReceivedFromOrder);
-        totlePrimary.transfer(amountReceivedFromOrder);
+        msg.sender.transfer(amountReceivedFromOrder);
     }
 
     function removeFee(uint256 totalAmount) internal constant returns (uint256){
       uint256 feePercentage = exchange.fee();
       return SafeMath.div(SafeMath.mul(totalAmount, 1 ether), SafeMath.add(feePercentage, 1 ether));
 
+    }
+
+    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
+        if (genericSelector == getAmountToGiveSelector) {
+            return bytes4(keccak256("getAmountToGive((address,uint256,address,uint256,uint256,uint256,address,uint8,bytes32,bytes32))"));
+        } else if (genericSelector == staticExchangeChecksSelector) {
+            return bytes4(keccak256("staticExchangeChecks((address,uint256,address,uint256,uint256,uint256,address,uint8,bytes32,bytes32))"));
+        } else if (genericSelector == performBuyOrderSelector) {
+            return bytes4(keccak256("performBuyOrder((address,uint256,address,uint256,uint256,uint256,address,uint8,bytes32,bytes32),uint256)"));
+        } else if (genericSelector == performSellOrderSelector) {
+            return bytes4(keccak256("performSellOrder((address,uint256,address,uint256,uint256,uint256,address,uint8,bytes32,bytes32),uint256)"));
+        } else {
+            return bytes4(0x0);
+        }
     }
 
     /// @notice payable fallback to block EOA sending eth

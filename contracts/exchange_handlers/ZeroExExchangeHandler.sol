@@ -15,26 +15,6 @@ interface WETH {
 }
 
 
-/// @title ZeroExExchangeSelectorProvider
-/// @notice Provides this exchange implementation with correctly formatted function selectors
-contract ZeroExExchangeSelectorProvider is SelectorProvider {
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGive) {
-            return bytes4(keccak256("getAmountToGive_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
-        } else if (genericSelector == staticExchangeChecks) {
-            return bytes4(keccak256("staticExchangeChecks_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
-        } else if (genericSelector == performBuyOrder) {
-            return bytes4(keccak256("performBuyOrder_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
-        } else if (genericSelector == performSellOrder) {
-            return bytes4(keccak256("performSellOrder_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
-}
-
-// "((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes),bytes)"
-
 /// @title ZeroExExchangeHandler
 /// @notice Handles the all ZeroExExchange trades for the primary contract
 contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
@@ -55,17 +35,15 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
 
     /// @notice Constructor
     /// @param _exchange Address of the IExchangeCore exchange
-    /// @param selectorProvider the provider for this exchanges function selectors
     /// @param totlePrimary the address of the totlePrimary contract
     constructor(
         address _exchange,
-        address selectorProvider,
         address totlePrimary,
         address _weth,
         address errorReporter
         /* ,address logger */
     )
-        ExchangeHandler(selectorProvider, totlePrimary, errorReporter/*, logger*/)
+        ExchangeHandler(totlePrimary, errorReporter/*, logger*/)
         public
     {
         require(_exchange != address(0x0));
@@ -109,7 +87,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
     )
       public
       view
-      onlySelf
+      onlyTotle
       returns (uint256 amountToGive)
     {
         LibOrder.OrderInfo memory orderInfo = exchange.getOrderInfo(
@@ -159,7 +137,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
     )
         public
         view
-        onlySelf
+        onlyTotle
         returns (bool checksPassed)
     {
 
@@ -188,7 +166,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
     )
         public
         payable
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         uint256 amountToGiveForOrder = toUint(msg.data, msg.data.length - 32);
@@ -202,7 +180,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
             amountToGiveForOrder,
             data.signature
         );
-        require(ERC20SafeTransfer.safeTransfer(toAddress(data.makerAssetData, 16), totlePrimary, results.makerAssetFilledAmount));
+        require(ERC20SafeTransfer.safeTransfer(toAddress(data.makerAssetData, 16), msg.sender, results.makerAssetFilledAmount));
 
         amountSpentOnOrder = results.takerAssetFilledAmount;
         amountReceivedFromOrder = results.makerAssetFilledAmount;
@@ -217,7 +195,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
         OrderData data
     )
         public
-        onlySelf
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         uint256 amountToGiveForOrder = toUint(msg.data, msg.data.length - 32);
@@ -230,7 +208,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
         );
 
         weth.withdraw(results.makerAssetFilledAmount);
-        totlePrimary.transfer(results.makerAssetFilledAmount);
+        msg.sender.transfer(results.makerAssetFilledAmount);
 
         amountSpentOnOrder = results.takerAssetFilledAmount;
         amountReceivedFromOrder = results.makerAssetFilledAmount;
@@ -294,6 +272,20 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
         return tempUint;
     }
 
+    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
+        if (genericSelector == getAmountToGiveSelector) {
+            return bytes4(keccak256("getAmountToGive_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
+        } else if (genericSelector == staticExchangeChecksSelector) {
+            return bytes4(keccak256("staticExchangeChecks_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
+        } else if (genericSelector == performBuyOrderSelector) {
+            return bytes4(keccak256("performBuyOrder_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
+        } else if (genericSelector == performSellOrderSelector) {
+            return bytes4(keccak256("performSellOrder_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
+        } else {
+            return bytes4(0x0);
+        }
+    }
+
     /*
     *   Payable fallback function
     */
@@ -301,6 +293,6 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
     /// @notice payable fallback to allow the exchange to return ether directly to this contract
     /// @dev note that only the exchange should be able to send ether to this contract
     function() public payable {
-        require(msg.sender == address(weth) || msg.sender == totlePrimary);
+        require(msg.sender == address(weth));
     }
 }
