@@ -1,4 +1,4 @@
-pragma solidity 0.4.25;
+pragma solidity 0.5.7;
 pragma experimental ABIEncoderV2;
 
 import "../lib/SafeMath.sol";
@@ -6,7 +6,6 @@ import "../lib/Math.sol";
 import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
 import "./ExchangeHandler.sol";
-import "./SelectorProvider.sol";
 import "./interfaces/zeroex/IExchangeCore.sol";
 
 interface WETH {
@@ -35,18 +34,12 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
 
     /// @notice Constructor
     /// @param _exchange Address of the IExchangeCore exchange
-    /// @param totlePrimary the address of the totlePrimary contract
     constructor(
         address _exchange,
-        address totlePrimary,
-        address _weth,
-        address errorReporter
-        /* ,address logger */
+        address _weth
     )
-        ExchangeHandler(totlePrimary, errorReporter/*, logger*/)
         public
     {
-        require(_exchange != address(0x0));
         exchange = IExchangeCore(_exchange);
         ERC20_ASSET_PROXY = exchange.getAssetProxy(toBytes4(ZRX_ASSET_DATA, 0));
         weth = WETH(_weth);
@@ -83,11 +76,10 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
     /// @param data LibOrder.Order struct containing order values
     /// @return amountToGive amount taker needs to give in order to fill the order
     function getAmountToGive_(
-        OrderData data
+        OrderData memory data
     )
-      public
+      internal
       view
-      onlyTotle
       returns (uint256 amountToGive)
     {
         LibOrder.OrderInfo memory orderInfo = exchange.getOrderInfo(
@@ -102,16 +94,17 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
             maxFromMakerFee),
             SafeMath.sub(data.takerAssetAmount, orderInfo.orderTakerAssetFilledAmount)
         );
+        //TODO add in taker fee shit - both in calculating this and actually buying the ZRX
         /* logger.log("Getting amountToGive from ZeroEx arg2: amountToGive", amountToGive); */
     }
 
-    function getAssetDataAvailable(bytes assetData, address account) internal view returns (uint){
+    function getAssetDataAvailable(bytes memory assetData, address account) internal view returns (uint){
         address tokenAddress = toAddress(assetData, 16);
         ERC20 token = ERC20(tokenAddress);
         return Math.min(token.balanceOf(account), token.allowance(account, ERC20_ASSET_PROXY));
     }
 
-    function getZeroExOrder(OrderData data) internal pure returns (LibOrder.Order) {
+    function getZeroExOrder(OrderData memory data) internal pure returns (LibOrder.Order memory) {
         return LibOrder.Order({
             makerAddress: data.makerAddress,
             takerAddress: data.takerAddress,
@@ -132,12 +125,11 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
     /// @dev This should be called to check for payload errors
     /// @param data LibOrder.Order struct containing order values
     /// @return checksPassed value representing pass or fail
-    function staticExchangeChecks_(
-        OrderData data
+    function staticExchangeChecks(
+        OrderData memory data
     )
-        public
+        internal
         view
-        onlyTotle
         returns (bool checksPassed)
     {
 
@@ -157,62 +149,60 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
         );
     }
 
-    /// @notice Perform a buy order at the exchange
-    /// @param data LibOrder.Order struct containing order values
-    /// @return amountSpentOnOrder the amount that would be spent on the order
-    /// @return amountReceivedFromOrder the amount that was received from this order
-    function performBuyOrder_(
-        OrderData data
+    function performOrder(
+        bytes memory genericPayload,
+        uint256 availableToSpend,
+        uint256 targetAmount,
+        bool targetAmountIsSource
     )
         public
         payable
-        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
-        uint256 amountToGiveForOrder = toUint(msg.data, msg.data.length - 32);
+        OrderData memory data = abi.decode(genericPayload, (OrderData));
+        address sourceAddress = toAddress(data.takerAssetData, 16);
+        if(!staticExchangeChecks(data)){
+            if(sourceAddress == address(weth)){
+                msg.sender.transfer(availableToSpend);
+            } else {
+                ERC20SafeTransfer.safeTransfer(sourceAddress, msg.sender, availableToSpend); 
+            }
+            return (0,0);
 
-        approveAddress(ERC20_ASSET_PROXY, toAddress(data.takerAssetData, 16));
-
-        weth.deposit.value(amountToGiveForOrder)();
+        }
+        if(sourceAddress == address(weth)){
+            weth.deposit.value(availableToSpend);
+        }
+        approveAddress(ERC20_ASSET_PROXY, sourceAddress);
 
         LibFillResults.FillResults memory results = exchange.fillOrder(
             getZeroExOrder(data),
-            amountToGiveForOrder,
-            data.signature
-        );
-        require(ERC20SafeTransfer.safeTransfer(toAddress(data.makerAssetData, 16), msg.sender, results.makerAssetFilledAmount));
-
-        amountSpentOnOrder = results.takerAssetFilledAmount;
-        amountReceivedFromOrder = results.makerAssetFilledAmount;
-        /* logger.log("Performed buy order on ZeroEx arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder", amountSpentOnOrder, amountReceivedFromOrder); */
-    }
-
-    /// @notice Perform a sell order at the exchange
-    /// @param data LibOrder.Order struct containing order values
-    /// @return amountSpentOnOrder the amount that would be spent on the order
-    /// @return amountReceivedFromOrder the amount that was received from this order
-    function performSellOrder_(
-        OrderData data
-    )
-        public
-        onlyTotle
-        returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
-    {
-        uint256 amountToGiveForOrder = toUint(msg.data, msg.data.length - 32);
-        approveAddress(ERC20_ASSET_PROXY, toAddress(data.takerAssetData, 16));
-
-        LibFillResults.FillResults memory results = exchange.fillOrder(
-            getZeroExOrder(data),
-            amountToGiveForOrder,
+            Math.min(targetAmount, availableToSpend),
             data.signature
         );
 
-        weth.withdraw(results.makerAssetFilledAmount);
-        msg.sender.transfer(results.makerAssetFilledAmount);
-
         amountSpentOnOrder = results.takerAssetFilledAmount;
         amountReceivedFromOrder = results.makerAssetFilledAmount;
-        /* logger.log("Performed sell order on ZeroEx arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder", amountSpentOnOrder, amountReceivedFromOrder); */
+
+        if(amountSpentOnOrder < availableToSpend){
+            if(sourceAddress == address(weth)){
+                weth.withdraw(availableToSpend - amountSpentOnOrder);
+                msg.sender.transfer(amountSpentOnOrder);
+            } else {
+                ERC20SafeTransfer.safeTransfer(sourceAddress, msg.sender, availableToSpend - amountSpentOnOrder);
+            }
+        }
+
+        address destinationAddress = toAddress(data.makerAssetData, 16);
+
+        if(destinationAddress == address(weth)){
+            weth.withdraw(amountReceivedFromOrder);
+            msg.sender.transfer(amountReceivedFromOrder);
+        } else {
+            ERC20SafeTransfer.safeTransfer(destinationAddress, msg.sender, amountReceivedFromOrder);
+        }
+
+
     }
 
     /// @notice Calculate the result of ((numerator * target) / denominator)
@@ -236,7 +226,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
     // @param _bytes a string of at least 20 bytes
     // @param _start the offset of the address within the byte stream
     // @return tempAddress the address encoded in the bytestring beginning at _start
-    function toAddress(bytes _bytes, uint _start) internal  pure returns (address) {
+    function toAddress(bytes memory _bytes, uint _start) internal  pure returns (address) {
         require(_bytes.length >= (_start + 20));
         address tempAddress;
 
@@ -247,7 +237,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
         return tempAddress;
     }
 
-    function toBytes4(bytes _bytes, uint _start) internal pure returns (bytes4) {
+    function toBytes4(bytes memory _bytes, uint _start) internal pure returns (bytes4) {
         require(_bytes.length >= (_start + 4));
         bytes4 tempBytes4;
 
@@ -261,7 +251,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
     // @param _bytes a string of at least 32 bytes
     // @param _start the offset of the uint256 within the byte stream
     // @return tempUint the uint encoded in the bytestring beginning at _start
-    function toUint(bytes _bytes, uint _start) internal  pure returns (uint256) {
+    function toUint(bytes memory _bytes, uint _start) internal  pure returns (uint256) {
         require(_bytes.length >= (_start + 32));
         uint256 tempUint;
 
@@ -272,27 +262,13 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
         return tempUint;
     }
 
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGiveSelector) {
-            return bytes4(keccak256("getAmountToGive_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
-        } else if (genericSelector == staticExchangeChecksSelector) {
-            return bytes4(keccak256("staticExchangeChecks_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
-        } else if (genericSelector == performBuyOrderSelector) {
-            return bytes4(keccak256("performBuyOrder_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
-        } else if (genericSelector == performSellOrderSelector) {
-            return bytes4(keccak256("performSellOrder_((address,address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,bytes,bytes,bytes))"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
-
     /*
     *   Payable fallback function
     */
 
     /// @notice payable fallback to allow the exchange to return ether directly to this contract
     /// @dev note that only the exchange should be able to send ether to this contract
-    function() public payable {
+    function() external payable {
         require(msg.sender == address(weth));
     }
 }

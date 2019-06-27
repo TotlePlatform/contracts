@@ -16,7 +16,7 @@
 
 */
 
-pragma solidity 0.4.25;
+pragma solidity 0.5.7;
 
 import "./ERC20.sol";
 import "./ERC20SafeTransfer.sol";
@@ -102,7 +102,7 @@ contract TokenTransferProxy is Ownable {
     }
 
     /*
-     * Public constant functions
+     * Public view functions
      */
 
     /// @dev Gets all authorized addresses.
@@ -110,7 +110,7 @@ contract TokenTransferProxy is Ownable {
     function getAuthorizedAddresses()
         public
         view
-        returns (address[])
+        returns (address[] memory)
     {
         return authorities;
     }

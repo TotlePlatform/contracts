@@ -1,13 +1,12 @@
-pragma solidity 0.4.25;
+pragma solidity 0.5.7;
 pragma experimental ABIEncoderV2;
 
 import "../lib/ERC20.sol";
 import "../lib/SafeMath.sol";
+import "../lib/Math.sol";
 import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
-import "../lib/ErrorReporter.sol";
 import "./ExchangeHandler.sol";
-import "./SelectorProvider.sol";
 
 interface ENSResolver {
     function getKyberNetworkAddress() external view returns (address);
@@ -34,22 +33,15 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
     struct OrderData {
         address tokenFrom;
         address tokenTo;
-        uint256 amountToGive;
-        uint256 minConversionRate;
-        address walletId;
     }
 
 
     /// @notice Constructor
     /// @param _ensResolver Address of the ENS resolver
-    /// @param _totlePrimary the address of the totlePrimary contract
     constructor(
-        address _ensResolver,
-        address _totlePrimary,
-        address errorReporter
+        address _ensResolver
         /* ,address logger */
     )
-        ExchangeHandler(_totlePrimary, errorReporter/*,logger*/)
         public
     {
         ensResolver = ENSResolver(_ensResolver);
@@ -59,113 +51,106 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
     *   Internal functions
     */
 
-
-    /// @notice Gets the amount that Totle needs to give for this order
-    /// @param data OrderData struct containing order values
-    /// @return amountToGive amount taker needs to give in order to fill the order
-    function getAmountToGive(
-        OrderData data
-    )
-        public
-        view
-        whenNotPaused
-        onlyTotle
-        returns (uint256 amountToGive)
-    {
-        // Adds the exchange fee onto the available amount
-        amountToGive = data.amountToGive;
-    }
-
-
-
     /// @notice Perform exchange-specific checks on the given order
     /// @dev This should be called to check for payload errors
     /// @param data OrderData struct containing order values
     /// @return checksPassed value representing pass or fail
     function staticExchangeChecks(
-        OrderData data
+        OrderData memory data,
+        Kyber exchange
     )
         public
         view
         whenNotPaused
-        onlyTotle
         returns (bool checksPassed)
     {
-        uint256 maxGasPrice = resolveExchangeAddress().maxGasPrice();
+        uint256 maxGasPrice = exchange.maxGasPrice();
         /* logger.log("Checking gas price arg2: tx.gasprice, arg3: maxGasPrice", tx.gasprice, maxGasPrice); */
         return (maxGasPrice >= tx.gasprice);
     }
 
-    /// @dev Perform a buy order at the exchange
-    /// @param data OrderData struct containing order values
-    /// @param  amountToGiveForOrder amount that should be spent on this order
-    /// @return amountSpentOnOrder the amount that would be spent on the order
-    /// @return amountReceivedFromOrder the amount that was received from this order
-    function performBuyOrder(
-        OrderData data,
-        uint256 amountToGiveForOrder
+
+
+    function performOrder(
+        bytes memory genericPayload,
+        uint256 availableToSpend,
+        uint256 targetAmount,
+        bool targetAmountIsSource
     )
         public
         payable
-        whenNotPaused
-        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
-        amountSpentOnOrder = amountToGiveForOrder;
-        amountReceivedFromOrder = performTrade(data.tokenFrom, amountToGiveForOrder, data.tokenTo, data.minConversionRate);
-        /* logger.log("Performing Kyber buy order arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder", amountSpentOnOrder, amountReceivedFromOrder); */
-    }
-
-    /// @dev Perform a sell order at the exchange
-    /// @param data OrderData struct containing order values
-    /// @param  amountToGiveForOrder amount that should be spent on this order
-    /// @return amountSpentOnOrder the amount that would be spent on the order
-    /// @return amountReceivedFromOrder the amount that was received from this order
-    function performSellOrder(
-        OrderData data,
-        uint256 amountToGiveForOrder
-    )
-        public
-        whenNotPaused
-        onlyTotle
-        returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
-    {
-        approveAddress(address(resolveExchangeAddress()), data.tokenFrom);
-        amountSpentOnOrder = amountToGiveForOrder;
-        amountReceivedFromOrder = performTrade(data.tokenFrom, amountToGiveForOrder, data.tokenTo, data.minConversionRate);
-        /* logger.log("Performing Kyber sell order arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder",amountSpentOnOrder,amountReceivedFromOrder); */
-    }
-
-    function performTrade(
-        address tokenFrom,
-        uint256 amountToGive,
-        address tokenTo,
-        uint256 minConversionRate
-    )
-         internal
-         returns (uint256 amountReceivedFromOrder)
-    {
-        amountReceivedFromOrder = resolveExchangeAddress().trade.value(msg.value)(
-            ERC20(tokenFrom),
-            amountToGive,
-            ERC20(tokenTo),
-            msg.sender,
-            Utils.max_uint(),
-            minConversionRate,
-            0x0
+        OrderData memory data = abi.decode(genericPayload, (OrderData));
+        uint256 originalBalance = getBalance(data.tokenFrom);
+        Kyber exchange = resolveExchange();
+        if(!staticExchangeChecks(data, exchange)){
+            if(data.tokenFrom == Utils.eth_address()){
+                msg.sender.transfer(msg.value);
+            } else {
+                ERC20SafeTransfer.safeTransfer(data.tokenFrom, msg.sender, availableToSpend);
+            }
+        }
+        approve(address(exchange), data.tokenFrom);
+        amountReceivedFromOrder = exchange.trade.value(
+            data.tokenFrom == Utils.eth_address()? msg.value: 0)(
+                ERC20(data.tokenFrom == Utils.eth_address() ? ETH_TOKEN_ADDRESS : data.tokenFrom),
+                Math.min(availableToSpend, targetAmountIsSource ? targetAmount : availableToSpend),
+                ERC20(data.tokenTo == Utils.eth_address() ? ETH_TOKEN_ADDRESS : data.tokenTo),
+                msg.sender,
+                targetAmountIsSource ? Utils.max_uint(): targetAmount,
+                1,
+                address(0x0)
         );
-
-        // If Kyber has sent us back some excess ether
-        // TODO: If ether gets accidentally trapped in this contract by some other transaction,
-        //       this function will send it back to the primary in the subsequent order.
-        //       Change code to only return back what's left over from *this* transaction.
-        if(address(this).balance > 0) {
-            /* logger.log("Got excess ether back from Kyber arg2: address(this).balance",address(this).balance); */
-            msg.sender.transfer(address(this).balance);
+        uint256 newInputBalance = getBalance(data.tokenFrom);
+        amountSpentOnOrder = originalBalance - newInputBalance;
+        if(amountSpentOnOrder < availableToSpend){
+            if(data.tokenFrom == Utils.eth_address()){
+                msg.sender.transfer(SafeMath.sub(availableToSpend, amountSpentOnOrder));
+            } else {
+                ERC20SafeTransfer.safeTransfer(data.tokenFrom, msg.sender, SafeMath.sub(availableToSpend, amountSpentOnOrder));
+            }
         }
     }
 
-    function resolveExchangeAddress()
+    function approve(
+        address spender,
+        address token
+    )
+        internal
+    {
+        if(token != Utils.eth_address()){
+            approveAddress(spender, token);
+        }
+    }
+
+    function getBalance(
+        address token
+    )
+        internal
+        returns (uint256 balance)
+    {
+        if(token == Utils.eth_address()){
+            return address(this).balance;
+        } else {
+            return ERC20(token).balanceOf(address(this));
+        }
+    }
+
+    function transfer(
+        address token,
+        uint256 amount
+    )
+        internal
+    {
+        if(token == Utils.eth_address()){
+            msg.sender.transfer(amount);
+        } else {
+            ERC20SafeTransfer.safeTransfer(token, msg.sender, amount);
+        }
+    }
+
+    function resolveExchange()
         internal
         view
         returns (Kyber)
@@ -173,23 +158,9 @@ contract KyberHandler is ExchangeHandler, AllowanceSetter {
         return Kyber(ensResolver.getKyberNetworkAddress());
     }
 
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGiveSelector) {
-            return bytes4(keccak256("getAmountToGive((address,address,uint256,uint256,address))"));
-        } else if (genericSelector == staticExchangeChecksSelector) {
-            return bytes4(keccak256("staticExchangeChecks((address,address,uint256,uint256,address))"));
-        } else if (genericSelector == performBuyOrderSelector) {
-            return bytes4(keccak256("performBuyOrder((address,address,uint256,uint256,address),uint256)"));
-        } else if (genericSelector == performSellOrderSelector) {
-            return bytes4(keccak256("performSellOrder((address,address,uint256,uint256,address),uint256)"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
-
     /// @notice payable fallback to block EOA sending eth
     /// @dev this should fail if an EOA (or contract with 0 bytecode size) tries to send ETH to this contract
-    function() public payable {
+    function() external payable {
         // Check in here that the sender is a contract! (to stop accidents)
         uint256 size;
         address sender = msg.sender;

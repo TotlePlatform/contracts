@@ -1,28 +1,37 @@
-pragma solidity 0.4.25;
+pragma solidity 0.5.7;
 pragma experimental ABIEncoderV2;
 
 import "../lib/ERC20.sol";
 import "../lib/SafeMath.sol";
+import "../lib/Math.sol";
 import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
-import "../lib/ErrorReporter.sol";
 import "./ExchangeHandler.sol";
-import "./SelectorProvider.sol";
 
 interface UniswapExchange {
 
-   //Trading
-   function ethToTokenSwapInput(uint256 min_tokens, uint256 deadline) external payable returns (uint256);
-   function tokenToEthSwapInput(uint256 tokens_sold, uint256 min_eth, uint256 deadline) external returns (uint256);
+    //Trading
+    //Eth to token
+    function ethToTokenTransferInput(uint256 min_tokens, uint256 deadline, address recipient) external payable returns (uint256  tokens_bought);
+    function ethToTokenTransferOutput(uint256 tokens_bought, uint256 deadline, address recipient) external payable returns (uint256  eth_sold);
+    
+    //Token to eth
+    function tokenToEthTransferInput(uint256 tokens_sold, uint256 min_tokens, uint256 deadline, address recipient) external returns (uint256  eth_bought);
+    function tokenToEthTransferOutput(uint256 eth_bought, uint256 max_tokens, uint256 deadline, address recipient) external returns (uint256  tokens_sold);
 
-   function ethToTokenTransferInput(uint256 min_tokens, uint256 deadline, address recipient) external payable returns (uint256);
-   function tokenToEthTransferInput(uint256 tokens_sold, uint256 min_eth, uint256 deadline, address recipient) external returns (uint256);
+    //Token to token
+    function tokenToTokenTransferInput(uint256 tokens_sold, uint256 min_tokens_bought, uint256 min_eth_bought, uint256 deadline, address recipient, address token_addr) external returns (uint256  tokens_bought);
+    function tokenToTokenTransferOutput(uint256 tokens_bought, uint256 max_tokens_sold, uint256 max_eth_sold, uint256 deadline, address recipient, address token_addr) external returns (uint256  tokens_sold);
 
-   // Get Price
-   function getEthToTokenInputPrice(uint256 eth_sold) external constant returns (uint256);
-   function getTokenToEthInputPrice(uint256 tokens_sold) external constant returns (uint256);
+    // Get Price
+    function getEthToTokenInputPrice(uint256 eth_sold) external view returns (uint256);
+    function getTokenToEthInputPrice(uint256 tokens_sold) external view returns (uint256);
 
-   function tokenAddress() external constant returns (address);
+    function tokenAddress() external view returns (address);
+}
+
+interface UniswapFactory {
+    function getExchange(address token) external view returns (address exchange);
 }
 
 /// @title Handler for Uniswap exchange
@@ -32,120 +41,156 @@ contract UniswapHandler is ExchangeHandler, AllowanceSetter {
     */
 
     struct OrderData {
-        address exchangeAddress;
-        uint256 amountToGive;
+        address sourceToken;
+        address destinationToken;
     }
 
+    UniswapFactory private uniswapFactory;
 
     /// @notice Constructor
-    /// @param _totlePrimary the address of the totlePrimary contract
-    /// @param errorReporter the address of of the errorReporter contract
     constructor(
-        address _totlePrimary,
-        address errorReporter/*,
-        address logger*/
-    ) ExchangeHandler(_totlePrimary, errorReporter/*, logger*/) public {
-
+        address _uniswapFactory
+    ) 
+        public
+    {
+        uniswapFactory = UniswapFactory(_uniswapFactory);
     }
 
     /*
     *   Internal functions
     */
 
-
-    /// @notice Gets the amount that TotlePrimary needs to give for this order
-    /// @param data OrderData struct containing order values
-    /// @return amountToGive amount taker needs to give in order to fill the order
-    function getAmountToGive(
-        OrderData data
-    )
-        public
-        view
-        whenNotPaused
-        onlyTotle
-        returns (uint256 amountToGive)
-    {
-        amountToGive = data.amountToGive;
-    }
-
-
-
-    /// @notice Perform exchange-specific checks on the given order
-    /// @dev This should be called to check for payload errors
-    /// @param data OrderData struct containing order values
-    /// @return checksPassed value representing pass or fail
-    function staticExchangeChecks(
-        OrderData data
-    )
-        public
-        view
-        whenNotPaused
-        onlyTotle
-        returns (bool checksPassed)
-    {
-        return true;
-    }
-
-    /// @dev Perform a buy order at the exchange
-    /// @param data OrderData struct containing order values
-    /// @param  amountToGiveForOrder amount that should be spent on this order
-    /// @return amountSpentOnOrder the amount that would be spent on the order
-    /// @return amountReceivedFromOrder the amount that was received from this order
-    function performBuyOrder(
-        OrderData data,
-        uint256 amountToGiveForOrder
+    function performOrder(
+        bytes memory genericPayload,
+        uint256 availableToSpend,
+        uint256 targetAmount,
+        bool targetAmountIsSource
     )
         public
         payable
-        whenNotPaused
-        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
-        UniswapExchange ex = UniswapExchange(data.exchangeAddress);
-        amountSpentOnOrder = amountToGiveForOrder;
-        amountReceivedFromOrder = ex.ethToTokenTransferInput.value(amountToGiveForOrder)(1, block.timestamp+1, msg.sender);
-        /* logger.log("Performing Uniswap buy order arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder", amountSpentOnOrder, amountReceivedFromOrder);  */
-
-    }
-
-    /// @dev Perform a sell order at the exchange
-    /// @param data OrderData struct containing order values
-    /// @param  amountToGiveForOrder amount that should be spent on this order
-    /// @return amountSpentOnOrder the amount that would be spent on the order
-    /// @return amountReceivedFromOrder the amount that was received from this order
-    function performSellOrder(
-        OrderData data,
-        uint256 amountToGiveForOrder
-    )
-        public
-        whenNotPaused
-        onlyTotle
-        returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
-    {
-        UniswapExchange ex = UniswapExchange(data.exchangeAddress);
-        approveAddress(data.exchangeAddress, ex.tokenAddress());
-        amountSpentOnOrder = amountToGiveForOrder;
-        amountReceivedFromOrder = ex.tokenToEthTransferInput(amountToGiveForOrder, 1, block.timestamp+1, msg.sender);
-        /* logger.log("Performing Uniswap sell order arg2: amountSpentOnOrder, arg3: amountReceivedFromOrder",amountSpentOnOrder,amountReceivedFromOrder); */
-    }
-
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGiveSelector) {
-            return bytes4(keccak256("getAmountToGive((address,uint256))"));
-        } else if (genericSelector == staticExchangeChecksSelector) {
-            return bytes4(keccak256("staticExchangeChecks((address,uint256))"));
-        } else if (genericSelector == performBuyOrderSelector) {
-            return bytes4(keccak256("performBuyOrder((address,uint256),uint256)"));
-        } else if (genericSelector == performSellOrderSelector) {
-            return bytes4(keccak256("performSellOrder((address,uint256),uint256)"));
+        OrderData memory data = abi.decode(genericPayload, (OrderData));
+        UniswapExchange ex = UniswapExchange(uniswapFactory.getExchange(data.sourceToken == Utils.eth_address() ? data.destinationToken: data.sourceToken));
+        approve(data.sourceToken, address(ex));
+        uint256 maxToSpend = getMaxToSpend(targetAmountIsSource, targetAmount, availableToSpend);
+        if(data.sourceToken == Utils.eth_address()){
+            return performEthToToken(data, ex, targetAmountIsSource, targetAmount, maxToSpend, availableToSpend);
+        } else if(data.destinationToken == Utils.eth_address()){
+            return performTokenToEth(data, ex, targetAmountIsSource, targetAmount, maxToSpend, availableToSpend);
         } else {
-            return bytes4(0x0);
+            return performTokenToToken(data, ex, targetAmountIsSource, targetAmount, maxToSpend, availableToSpend);
+        }
+    }
+
+    function performEthToToken(
+        OrderData memory data,
+        UniswapExchange ex, 
+        bool targetAmountIsSource, 
+        uint256 targetAmount,
+        uint256 maxToSpend,
+        uint256 availableToSpend
+    ) 
+        internal 
+        returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder) 
+    {
+        if(targetAmountIsSource){
+            amountReceivedFromOrder = ex.ethToTokenTransferInput.value(maxToSpend)(1, block.timestamp, msg.sender);
+            amountSpentOnOrder = maxToSpend;
+            if(maxToSpend < availableToSpend) {
+                msg.sender.transfer(availableToSpend - amountSpentOnOrder);
+            }
+        } else {
+            amountSpentOnOrder = ex.ethToTokenTransferOutput.value(maxToSpend)(targetAmount, block.timestamp, msg.sender);
+            amountReceivedFromOrder = targetAmount;
+            if(availableToSpend - amountSpentOnOrder > 0){
+                msg.sender.transfer(availableToSpend - amountSpentOnOrder);
+            }
+        }
+    }
+
+    function performTokenToEth(
+        OrderData memory data,
+        UniswapExchange ex,
+        bool targetAmountIsSource,
+        uint256 targetAmount,
+        uint256 maxToSpend,
+        uint256 availableToSpend
+    )
+        internal
+        returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
+    {
+        if(targetAmountIsSource){
+            amountReceivedFromOrder = ex.tokenToEthTransferInput(maxToSpend, 1, block.timestamp, msg.sender);
+            amountSpentOnOrder = maxToSpend;
+            if(maxToSpend < availableToSpend) {
+                ERC20SafeTransfer.safeTransfer(data.sourceToken, msg.sender, availableToSpend - amountSpentOnOrder);
+            }
+        } else {
+            amountSpentOnOrder = ex.tokenToEthTransferOutput(targetAmount, maxToSpend, block.timestamp, msg.sender);
+            amountReceivedFromOrder = targetAmount;
+            if(amountSpentOnOrder < availableToSpend){
+                ERC20SafeTransfer.safeTransfer(data.sourceToken, msg.sender, availableToSpend - amountSpentOnOrder);
+            }
+        }
+    }
+
+    function performTokenToToken(
+        OrderData memory data,
+        UniswapExchange ex,
+        bool targetAmountIsSource,
+        uint256 targetAmount,
+        uint256 maxToSpend, 
+        uint256 availableToSpend
+    )
+        internal
+        returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
+    {
+        
+        if(targetAmountIsSource){
+            amountReceivedFromOrder = ex.tokenToTokenTransferInput(maxToSpend, 1, 1, block.timestamp, msg.sender, data.destinationToken);
+            amountSpentOnOrder = maxToSpend;
+            if(availableToSpend > amountSpentOnOrder){
+                ERC20SafeTransfer.safeTransfer(data.sourceToken, msg.sender, availableToSpend - amountSpentOnOrder);
+            }
+        } else {
+            amountSpentOnOrder = ex.tokenToTokenTransferOutput(targetAmount, maxToSpend,  Utils.max_uint(), block.timestamp, msg.sender, data.destinationToken);
+            amountReceivedFromOrder = targetAmount;
+            if(amountSpentOnOrder < availableToSpend){
+                ERC20SafeTransfer.safeTransfer(data.sourceToken, msg.sender, availableToSpend - amountSpentOnOrder);
+            }
+        }
+    }
+
+    function getMaxToSpend(
+        bool targetAmountIsSource,
+        uint256 targetAmount,
+        uint256 availableToSpend
+    )
+        internal
+        returns (uint256 max)
+    {
+        max = availableToSpend;
+        if(targetAmountIsSource){
+            max = Math.min(max, targetAmount);
+        }
+        return max;
+    }
+
+    function approve(
+        address token,
+        address taker
+    )
+        internal 
+    {
+        if(token != Utils.eth_address()){
+            approveAddress(taker, token);
         }
     }
 
     /// @notice payable fallback to block EOA sending eth
     /// @dev this should fail if an EOA (or contract with 0 bytecode size) tries to send ETH to this contract
-    function() public payable {
+    function() external payable {
         // Check in here that the sender is a contract! (to stop accidents)
         uint256 size;
         address sender = msg.sender;

@@ -1,22 +1,20 @@
-pragma solidity 0.4.25;
+pragma solidity 0.5.7;
 pragma experimental ABIEncoderV2;
 
 import "../lib/SafeMath.sol";
 import "../lib/Math.sol";
 import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
-import "../lib/ErrorReporter.sol";
 import "../lib/ERC20SafeTransfer.sol";
 import "./ExchangeHandler.sol";
-import "./SelectorProvider.sol";
 
 interface WeiDex {
     function depositEthers() external payable;
     function withdrawEthers(uint256 amount) external;
     function depositTokens(address token, uint256 amount) external;
     function withdrawTokens(address token, uint256 amount) external;
-    function takeBuyOrder(address[3] orderAddresses, uint256[3] orderValues, uint256 takerSellAmount, uint8 v, bytes32 r, bytes32 s) external;
-    function takeSellOrder(address[3] orderAddresses, uint256[3] orderValues, uint256 takerSellAmount, uint8 v, bytes32 r, bytes32 s) external;
+    function takeBuyOrder(address[3] calldata orderAddresses, uint256[3] calldata orderValues, uint256 takerSellAmount, uint8 v, bytes32 r, bytes32 s) external;
+    function takeSellOrder(address[3] calldata orderAddresses, uint256[3] calldata orderValues, uint256 takerSellAmount, uint8 v, bytes32 r, bytes32 s) external;
     function filledAmounts(bytes32 orderHash) external view returns (uint256);
     function feeRate() external view returns (uint256);
     function balances(address token, address user) external view returns (uint256);
@@ -46,18 +44,11 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
 
     /// @notice Constructor
     /// @param _exchange Address of the WeiDex exchange
-    /// @param totlePrimary the address of the totlePrimary contract
-    /// @param errorReporter the address of the error reporter contract
     constructor(
-        address _exchange,
-        address totlePrimary,
-        address errorReporter
-        /* ,address logger */
+        address _exchange
     )
-        ExchangeHandler(totlePrimary, errorReporter/*, logger*/)
         public
     {
-        require(_exchange != address(0x0));
         exchange = WeiDex(_exchange);
     }
 
@@ -65,37 +56,16 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
     *   Public functions
     */
 
-    /// @notice Gets the amount that Totle needs to give for this order
-    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
-    /// should only be called from functions which are inherited from the ExchangeHandler
-    /// base contract
-    /// @param order OrderData struct containing order values
-    /// @return amountToGive amount taker needs to give in order to fill the order
-    function getAmountToGive(
-        OrderData order
-    )
-        public
-        view
-        onlyTotle
-        returns (uint256 amountToGive)
-    {
-        amountToGive = getAvailableTakerVolume(order);
-        /* logger.log("Remaining volume from weiDex", amountToGive); */
-    }
+
 
     /// @notice Perform exchange-specific checks on the given order
-    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
-    /// should only be called from functions which are inherited from the ExchangeHandler
-    /// base contract.
-    /// This should be called to check for payload errors.
     /// @param order OrderData struct containing order values
     /// @return checksPassed value representing pass or fail
     function staticExchangeChecks(
-        OrderData order
+        OrderData memory order
     )
-        public
+        internal
         view
-        onlyTotle
         returns (bool checksPassed)
     {
         bool correctMaker = order.addresses[0] == ecrecover(keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", createHash(order))), order.v, order.r, order.s);
@@ -105,20 +75,15 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /// @notice Perform a buy order at the exchange
-    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
-    /// should only be called from functions which are inherited from the ExchangeHandler
-    /// base contract
     /// @param order OrderData struct containing order values
     /// @param  amountToGiveForOrder amount that should be spent on this order
     /// @return amountSpentOnOrder the amount that would be spent on the order
     /// @return amountReceivedFromOrder the amount that was received from this order
     function performBuyOrder(
-        OrderData order,
+        OrderData memory order,
         uint256 amountToGiveForOrder
     )
-        public
-        payable
-        onlyTotle
+        internal
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         /* logger.log("Depositing eth to weiDex arg2: amountToGiveForOrder, arg3: ethBalance", amountToGiveForOrder, address(this).balance); */
@@ -132,27 +97,21 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
         amountReceivedFromOrder = SafeMath.div(SafeMath.mul(amountToGiveForOrder, order.values[0]), order.values[1]);
         amountReceivedFromOrder = SafeMath.sub(amountReceivedFromOrder, SafeMath.div(amountReceivedFromOrder, feeRate)); //Remove fee
         exchange.withdrawTokens(order.addresses[1], amountReceivedFromOrder);
-        if (!ERC20SafeTransfer.safeTransfer(order.addresses[1], msg.sender, amountReceivedFromOrder)) {
-            errorReporter.revertTx("Unable to transfer bought tokens to primary");
-        }
-
+        ERC20SafeTransfer.safeTransfer(order.addresses[1], msg.sender, amountReceivedFromOrder);
+        
         /* logger.log("Withdrawing tokens from weiDex arg2: amountReceivedFromOrder, arg3: amountSpentOnOrder", amountReceivedFromOrder, amountSpentOnOrder); */
     }
 
     /// @notice Perform a sell order at the exchange
-    /// @dev Uses the `onlyTotle` modifier with public visibility as this function
-    /// should only be called from functions which are inherited from the ExchangeHandler
-    /// base contract
     /// @param order OrderData struct containing order values
     /// @param  amountToGiveForOrder amount that should be spent on this order
     /// @return amountSpentOnOrder the amount that would be spent on the order
     /// @return amountReceivedFromOrder the amount that was received from this order
     function performSellOrder(
-        OrderData order,
+        OrderData memory order,
         uint256 amountToGiveForOrder
     )
-        public
-        onlyTotle
+        internal
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         approveAddress(address(exchange), order.addresses[2]);
@@ -169,8 +128,42 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
         /* logger.log("Withdrawing ether from weiDex arg2: amountReceivedFromOrder, arg3: amountSpentOnOrder", amountReceivedFromOrder, amountSpentOnOrder); */
 
         exchange.withdrawEthers(amountReceivedFromOrder);
-        /* logger.log("Withdrawing ether arg2: amountReceived", amountReceivedFromOrder); */
         msg.sender.transfer(amountReceivedFromOrder);
+
+    }
+
+    function performOrder(
+        bytes memory genericPayload,
+        uint256 availableToSpend,
+        uint256 targetAmount,
+        bool targetAmountIsSource
+    )
+        public
+        payable
+        returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
+    {
+        OrderData memory data = abi.decode(genericPayload, (OrderData));
+        if(!staticExchangeChecks(data)){
+            if(data.addresses[2] == address(0x0)){
+                msg.sender.transfer(availableToSpend);
+            } else {
+                ERC20SafeTransfer.safeTransfer(data.addresses[2], msg.sender, availableToSpend);
+            }
+            return (0,0);
+        }
+        uint256 availableGiveVolume = Math.min(Math.min(getAvailableTakerVolume(data), availableToSpend), targetAmount);
+        if(data.addresses[1] == address(0x0)){
+            (amountSpentOnOrder, amountReceivedFromOrder) = performSellOrder(data, availableGiveVolume);
+        } else {
+            (amountSpentOnOrder, amountReceivedFromOrder) = performBuyOrder(data, availableGiveVolume);
+        }
+        if(amountSpentOnOrder < availableToSpend){
+            if(data.addresses[1] == address(0x0)){
+                ERC20SafeTransfer.safeTransfer(data.addresses[2], msg.sender, SafeMath.sub(availableToSpend, amountSpentOnOrder));
+            } else {
+                msg.sender.transfer(SafeMath.sub(availableToSpend, amountSpentOnOrder));
+            }
+        }
     }
 
     /**
@@ -224,29 +217,15 @@ contract WeiDexHandler is ExchangeHandler, AllowanceSetter {
         return Math.min(remainingTakerVolumeFromFilled, remainingTakerVolumeFromMakerBalance);
     }
 
-    function getSelector(bytes4 genericSelector) public pure returns (bytes4) {
-        if (genericSelector == getAmountToGiveSelector) {
-            return bytes4(keccak256("getAmountToGive((address[3],uint256[3],uint8,bytes32,bytes32))"));
-        } else if (genericSelector == staticExchangeChecksSelector) {
-            return bytes4(keccak256("staticExchangeChecks((address[3],uint256[3],uint8,bytes32,bytes32))"));
-        } else if (genericSelector == performBuyOrderSelector) {
-            return bytes4(keccak256("performBuyOrder((address[3],uint256[3],uint8,bytes32,bytes32),uint256)"));
-        } else if (genericSelector == performSellOrderSelector) {
-            return bytes4(keccak256("performSellOrder((address[3],uint256[3],uint8,bytes32,bytes32),uint256)"));
-        } else {
-            return bytes4(0x0);
-        }
-    }
-
     /*
     *   Payable fallback function
     */
 
     /// @notice payable fallback to allow the exchange to return ether directly to this contract
     /// @dev note that only the exchange should be able to send ether to this contract
-    function() public payable {
+    function() external payable {
         if (msg.sender != address(exchange)) {
-            errorReporter.revertTx("An address other than the exchange cannot send ether to EDHandler fallback");
+            revert("An address other than the exchange cannot send ether to WeiDexHandler fallback");
         }
     }
 }

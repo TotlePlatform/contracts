@@ -1,4 +1,4 @@
-pragma solidity 0.4.25;
+pragma solidity 0.5.7;
 
 import "./ERC20.sol";
 
@@ -14,6 +14,7 @@ library Utils {
     uint256 constant internal MAX_DECIMALS = 18;
     uint256 constant internal ETH_DECIMALS = 18;
     uint256 constant internal MAX_UINT = 2**256-1;
+    address constant internal ETH_ADDRESS = address(0x0);
 
     // Currently constants can't be accessed from other contracts, so providing functions to do that here
     function precision() internal pure returns (uint256) { return PRECISION; }
@@ -22,6 +23,7 @@ library Utils {
     function max_decimals() internal pure returns (uint256) { return MAX_DECIMALS; }
     function eth_decimals() internal pure returns (uint256) { return ETH_DECIMALS; }
     function max_uint() internal pure returns (uint256) { return MAX_UINT; }
+    function eth_address() internal pure returns (address) { return ETH_ADDRESS; }
 
     /// @notice Retrieve the number of decimals used for a given ERC20 token
     /// @dev As decimals are an optional feature in ERC20, this contract uses `call` to
@@ -30,7 +32,6 @@ library Utils {
     /// @return decimals the number of decimals in the given token
     function getDecimals(address token)
         internal
-        view
         returns (uint256 decimals)
     {
         bytes4 functionSig = bytes4(keccak256("decimals()"));
@@ -115,12 +116,12 @@ library Utils {
         return (numerator + denominator - 1) / denominator; //avoid rounding down errors
     }
 
-    function calcDestAmount(ERC20 src, ERC20 dest, uint srcAmount, uint rate) internal view returns (uint) {
-        return calcDstQty(srcAmount, getDecimals(src), getDecimals(dest), rate);
+    function calcDestAmount(ERC20 src, ERC20 dest, uint srcAmount, uint rate) internal returns (uint) {
+        return calcDstQty(srcAmount, getDecimals(address(src)), getDecimals(address(dest)), rate);
     }
 
-    function calcSrcAmount(ERC20 src, ERC20 dest, uint destAmount, uint rate) internal view returns (uint) {
-        return calcSrcQty(destAmount, getDecimals(src), getDecimals(dest), rate);
+    function calcSrcAmount(ERC20 src, ERC20 dest, uint destAmount, uint rate) internal returns (uint) {
+        return calcSrcQty(destAmount, getDecimals(address(src)), getDecimals(address(dest)), rate);
     }
 
     function calcRateFromQty(uint srcAmount, uint destAmount, uint srcDecimals, uint dstDecimals)

@@ -1,30 +1,30 @@
-pragma solidity 0.4.25;
+pragma solidity 0.5.7;
 
 contract Logger {
   function log(
-    string message
+    string memory message
   ) public pure {}
 
   function log(
-    string message,
+    string memory message,
     uint256 arg2
   ) public pure {}
 
   function log(
-    string message,
+    string memory message,
     uint256 arg2,
     uint256 arg3
   ) public pure {}
 
   function log(
-    string message,
+    string memory message,
     uint256 arg2,
     uint256 arg3,
     uint256 arg4
   ) public pure {}
 
   function log(
-    string message,
+    string memory message,
     uint256 arg2,
     uint256 arg3,
     uint256 arg4,
@@ -32,7 +32,7 @@ contract Logger {
   ) public pure {}
 
   function log(
-    string message,
+    string memory message,
     uint256 arg2,
     uint256 arg3,
     uint256 arg4,
@@ -42,7 +42,7 @@ contract Logger {
 
 
   function log(
-    string message,
+    string memory message,
     uint256 arg2,
     uint256 arg3,
     uint256 arg4,
@@ -53,7 +53,7 @@ contract Logger {
 
 
   function log(
-    string message,
+    string memory message,
     uint256 arg2,
     uint256 arg3,
     uint256 arg4,
@@ -64,7 +64,7 @@ contract Logger {
   ) public pure {}
 
   function log(
-    string message,
+    string memory message,
     uint256 arg2,
     uint256 arg3,
     uint256 arg4,
