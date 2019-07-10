@@ -34,12 +34,12 @@ Our key focus for the development of our smart contract platform revolves around
 Under the current payload design we are somewhat limited by what exchanges we are able to support for each DEX order. With the upcoming changes in version 0.5.0 of Solidity, we hope to utilize updates to the ABI encoder, allowing nesting of dynamic data types such as structs and arrays.
 
 ## 3. Contract Addresses
-- TotlePrimary - [0x623520377F092C1c70Bd57D17aE9EDE6a288412C](https://etherscan.io/address/0x623520377F092C1c70Bd57D17aE9EDE6a288412C)
+- TotlePrimary - [0xcd2053679De3BCf2b7E2C2EfB6B499C57701222c](https://etherscan.io/address/0xcd2053679De3BCf2b7E2C2EfB6B499C57701222c)
 - TokenTransferProxy - [0x74758AcFcE059f503a7E6B0fC2c8737600f9F2c4](https://etherscan.io/address/0x74758AcFcE059f503a7E6B0fC2c8737600f9F2c4)
-- PartnerRegistry - [0xFB2E4c813451a441F26530642fc83bF14D3141cF](https://etherscan.io/address/0xFB2E4c813451a441F26530642fc83bF14D3141cF)
+- PartnerRegistry - [0xf3E5E76dabc9f4c479C258B4d7BB2F8250A8819C](https://etherscan.io/address/0xf3E5E76dabc9f4c479C258B4d7BB2F8250A8819C)
 - EtherDeltaHandler - [0xDf145332D6ac527C35879245b5A4fFd0Ea6c897b](https://etherscan.io/address/0xDf145332D6ac527C35879245b5A4fFd0Ea6c897b)
 - KyberHandler - [0x77b26c9f9b87668b66db65dce7cc2b392ff59966](https://etherscan.io/address/0x77b26c9f9b87668b66db65dce7cc2b392ff59966)
-- BancorHandler - [0x92aB1F32771e67172A00f1E1a78286355B0CDc80](https://etherscan.io/address/0x92aB1F32771e67172A00f1E1a78286355B0CDc80)
+- BancorHandler - [0x716156326b3dd55ed5e795ac5f19afdaab866daf](https://etherscan.io/address/0x716156326b3dd55ed5e795ac5f19afdaab866daf)
 - ZeroXHandler - [0x2840411594cFFEf97df411bf5f0dbF042feF6D21](https://etherscan.io/address/0x2840411594cFFEf97df411bf5f0dbF042feF6D21)
 - AirSwapHandler - [0x91F3935ed7a4ee8d15023c5Df26895B26aE98015](https://etherscan.io/address/0x91F3935ed7a4ee8d15023c5Df26895B26aE98015)
 - EthexHandler - [0xe6b4C185e286905Cf34b53527F0338bfFb9759D0](https://etherscan.io/address/0xe6b4C185e286905Cf34b53527F0338bfFb9759D0)
