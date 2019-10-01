@@ -1,7 +1,5 @@
 pragma solidity 0.5.7;
 
-
-
 /**
  * @title SafeMath
  * @dev Math operations with safety checks that revert on error

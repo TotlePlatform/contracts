@@ -272,6 +272,6 @@ contract EtherDeltaHandler is ExchangeHandler, AllowanceSetter {
     /// @notice payable fallback to allow the exchange to return ether directly to this contract
     /// @dev note that only the exchange should be able to send ether to this contract
     function() external payable {
-        revert("An address other than the exchange cannot send ether to EDHandler fallback");
+        require(msg.sender == address(exchange), "An address other than the exchange cannot send ether to EDHandler fallback");
     }
 }

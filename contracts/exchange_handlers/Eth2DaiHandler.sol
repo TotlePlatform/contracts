@@ -89,7 +89,7 @@ contract Eth2DaiHandler is ExchangeHandler, AllowanceSetter {
 
         //Validate order is active, exit if not
         if(!eth2dai.isActive(data.offerId)){
-            if(offer.takerToken == Utils.eth_address()){
+            if(offer.takerToken == address(weth)){
                 msg.sender.transfer(availableToSpend);
             } else {
                 ERC20SafeTransfer.safeTransfer(offer.takerToken, msg.sender, availableToSpend);
@@ -98,11 +98,11 @@ contract Eth2DaiHandler is ExchangeHandler, AllowanceSetter {
         }
 
         //Calculate amounts to buy/spend
-        uint256 amountToBuy = targetAmountIsSource ? Math.min(Math.min(availableToSpend, offer.takerAmount), targetAmount) * offer.makerAmount / offer.takerAmount : targetAmount;
+        uint256 amountToBuy = targetAmountIsSource ? Math.min(Math.min(availableToSpend, offer.takerAmount), targetAmount) * offer.makerAmount / offer.takerAmount : Math.min(targetAmount, offer.makerAmount);
 
         //Exit if we can't buy any
         if(amountToBuy == 0){
-            if(offer.takerToken == Utils.eth_address()){
+            if(offer.takerToken == address(weth)){
                 msg.sender.transfer(availableToSpend);
             } else {
                 ERC20SafeTransfer.safeTransfer(offer.takerToken, msg.sender, availableToSpend);
@@ -110,8 +110,8 @@ contract Eth2DaiHandler is ExchangeHandler, AllowanceSetter {
             return (0,0);
         }
 
-        if(offer.takerToken == Utils.eth_address()){
-            weth.deposit.value(amountToBuy * offer.takerAmount / offer.makerAmount);
+        if(offer.takerToken == address(weth)){
+            weth.deposit.value(amountToBuy * offer.takerAmount / offer.makerAmount)();
         }
         
         approveAddress(address(eth2dai), offer.takerToken);
@@ -130,7 +130,7 @@ contract Eth2DaiHandler is ExchangeHandler, AllowanceSetter {
 
         //If we didn't spend all the tokens, send back to totlePrimary
         if (amountSpentOnOrder < availableToSpend){
-            if(offer.takerToken == Utils.eth_address()){
+            if(offer.takerToken == address(weth)){
                 weth.withdraw(availableToSpend-amountSpentOnOrder);
                 msg.sender.transfer(availableToSpend - amountSpentOnOrder);
             } else {
@@ -139,7 +139,7 @@ contract Eth2DaiHandler is ExchangeHandler, AllowanceSetter {
         }
 
         //Send the purchased tokens back to totlePrimary
-        if(offer.makerToken == Utils.eth_address()){
+        if(offer.makerToken == address(weth)){
             weth.withdraw(amountReceivedFromOrder);
             msg.sender.transfer(amountReceivedFromOrder);
         } else {

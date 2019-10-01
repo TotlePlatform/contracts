@@ -7,6 +7,7 @@ import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
 import "./ExchangeHandler.sol";
 import "./interfaces/zeroex/IExchangeCore.sol";
+import "../lib/TotleControl.sol";
 
 interface WETH {
     function deposit() external payable;
@@ -16,7 +17,7 @@ interface WETH {
 
 /// @title ZeroExExchangeHandler
 /// @notice Handles the all ZeroExExchange trades for the primary contract
-contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
+contract ZeroExExchangeHandler is TotleControl, ExchangeHandler, AllowanceSetter  {
 
     /*
     *   State Variables
@@ -36,8 +37,9 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
     /// @param _exchange Address of the IExchangeCore exchange
     constructor(
         address _exchange,
-        address _weth
-    )
+        address _weth,
+        address _primary
+    ) TotleControl(_primary)
         public
     {
         exchange = IExchangeCore(_exchange);
@@ -157,6 +159,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
     )
         public
         payable
+        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         OrderData memory data = abi.decode(genericPayload, (OrderData));
@@ -171,13 +174,13 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
 
         }
         if(sourceAddress == address(weth)){
-            weth.deposit.value(availableToSpend);
+            weth.deposit.value(availableToSpend)();
         }
         approveAddress(ERC20_ASSET_PROXY, sourceAddress);
 
         LibFillResults.FillResults memory results = exchange.fillOrder(
             getZeroExOrder(data),
-            Math.min(targetAmount, availableToSpend),
+            Math.min(targetAmount, Math.min(availableToSpend, getAmountToGive_(data))),
             data.signature
         );
 
@@ -187,7 +190,7 @@ contract ZeroExExchangeHandler is ExchangeHandler, AllowanceSetter  {
         if(amountSpentOnOrder < availableToSpend){
             if(sourceAddress == address(weth)){
                 weth.withdraw(availableToSpend - amountSpentOnOrder);
-                msg.sender.transfer(amountSpentOnOrder);
+                msg.sender.transfer(availableToSpend - amountSpentOnOrder);
             } else {
                 ERC20SafeTransfer.safeTransfer(sourceAddress, msg.sender, availableToSpend - amountSpentOnOrder);
             }

@@ -1,6 +1,5 @@
 pragma solidity 0.5.7;
 
-
 library ERC20SafeTransfer {
     function safeTransfer(address _tokenAddress, address _to, uint256 _value) internal returns (bool success) {
         (success,) = _tokenAddress.call(abi.encodeWithSignature("transfer(address,uint256)", _to, _value));

@@ -47,7 +47,7 @@ library Utils {
             let wordLength := 0x20
 
             let success := call(
-                                5000, // Amount of gas
+                                gas, // Amount of gas
                                 token, // Address to call
                                 0, // ether to send
                                 ptr, // ptr to input data
