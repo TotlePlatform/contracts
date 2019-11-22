@@ -45,7 +45,7 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
 
     struct OrderData {
         address converterAddress;
-        address[11] conversionPath;
+        address[5] conversionPath;
         address destinationToken;
     }
 
@@ -122,10 +122,10 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
     /// @notice Takes the static array, trims the excess and returns a dynamic array
     /// @param addresses the static array
     /// @return address[] the dynamic array
-    function trimAddressArray(address[11] memory addresses) internal pure returns (address[] memory) {
+    function trimAddressArray(address[5] memory addresses) internal pure returns (address[] memory) {
         uint256 length = 0;
         uint256 index = 0;
-        for (index = 0; index < 11; index++){
+        for (index = 0; index < 5; index++){
             if (addresses[index] == address(0x0)){
                 continue;
             }
@@ -162,6 +162,6 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
         assembly {
             size := extcodesize(sender)
         }
-        revert("EOA cannot send ether to bancor fallback");
+        require(size > 0, "EOA cannot send ether to bancor fallback");
     }
 }

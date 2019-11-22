@@ -111,7 +111,7 @@ contract Eth2DaiHandler is ExchangeHandler, AllowanceSetter {
         }
 
         if(offer.takerToken == address(weth)){
-            weth.deposit.value(amountToBuy * offer.takerAmount / offer.makerAmount)();
+            weth.deposit.value(availableToSpend)();
         }
         
         approveAddress(address(eth2dai), offer.takerToken);
@@ -131,7 +131,7 @@ contract Eth2DaiHandler is ExchangeHandler, AllowanceSetter {
         //If we didn't spend all the tokens, send back to totlePrimary
         if (amountSpentOnOrder < availableToSpend){
             if(offer.takerToken == address(weth)){
-                weth.withdraw(availableToSpend-amountSpentOnOrder);
+                weth.withdraw(availableToSpend - amountSpentOnOrder);
                 msg.sender.transfer(availableToSpend - amountSpentOnOrder);
             } else {
                 ERC20SafeTransfer.safeTransfer(offer.takerToken, msg.sender, availableToSpend - amountSpentOnOrder);

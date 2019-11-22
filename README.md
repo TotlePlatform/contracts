@@ -34,7 +34,7 @@ Our key focus for the development of our smart contract platform revolves around
 Under the current payload design we are somewhat limited by what exchanges we are able to support for each DEX order. With the upcoming changes in version 0.5.0 of Solidity, we hope to utilize updates to the ABI encoder, allowing nesting of dynamic data types such as structs and arrays.
 
 ## 3. Contract Addresses
-- TotlePrimary - [0x37629db35889E1E87dCEe07b171EFD565e571E05](https://etherscan.io/address/0x37629db35889E1E87dCEe07b171EFD565e571E05)
+- TotlePrimary - [0xc755af998e8c50d6df1779ce3d7e4084a17b4c56](https://etherscan.io/address/0xc755af998e8c50d6df1779ce3d7e4084a17b4c56)
 - TokenTransferProxy - [0x74758AcFcE059f503a7E6B0fC2c8737600f9F2c4](https://etherscan.io/address/0x74758AcFcE059f503a7E6B0fC2c8737600f9F2c4)
 - PartnerRegistry - [0x02e2795f544f61af8897199335f4d8d149be4a38](https://etherscan.io/address/0x02e2795f544f61af8897199335f4d8d149be4a38)
 - EtherDeltaHandler -[0xbe1b7af62ebbfdde3b9f18daa9689c43e33dab56](https://etherscan.io/address/0xbe1b7af62ebbfdde3b9f18daa9689c43e33dab56)
@@ -42,8 +42,8 @@ Under the current payload design we are somewhat limited by what exchanges we ar
 - BancorHandler - [0x047Ed17511d9287B2bf82A456aa87Ba9cD45bB0d](https://etherscan.io/address/0x047Ed17511d9287B2bf82A456aa87Ba9cD45bB0d)
 - ZeroXHandler - [0x9c119a139b9edcdb65b534c5c36d15d88bda8f42](https://etherscan.io/address/0x9c119a139b9edcdb65b534c5c36d15d88bda8f42)
 - AirSwapHandler - [0x91F3935ed7a4ee8d15023c5Df26895B26aE98015](https://etherscan.io/address/0x91F3935ed7a4ee8d15023c5Df26895B26aE98015)
-- EthexHandler - [0xe6b4C185e286905Cf34b53527F0338bfFb9759D0](https://etherscan.io/address/0xe6b4C185e286905Cf34b53527F0338bfFb9759D0)
-- Eth2DaiHandler - [0xccad17ba7d5014ab87c3931fe3fe1eadd69ed266](https://etherscan.io/address/0xccad17ba7d5014ab87c3931fe3fe1eadd69ed266)
-- TokenStoreHandler - [0x3fF1445BE5674F0594f1614dB8606428342732D4](https://etherscan.io/address/0x3fF1445BE5674F0594f1614dB8606428342732D4)
+- Eth2DaiHandler - [0xb834b79f0e3a1dc04fb47c279f907cf649d4e956](https://etherscan.io/address/0xb834b79f0e3a1dc04fb47c279f907cf649d4e956)
 - UniswapHandler - [0xc095976BD18181f28626c5D48372DebD7a8Ce8d4](https://etherscan.io/address/0xc095976BD18181f28626c5D48372DebD7a8Ce8d4)
-- CompoundHandler - [0xa0c39f6d8de3707a513bb1e8fa55f73d0cf5d18c](https://etherscan.io/address/0xa0c39f6d8de3707a513bb1e8fa55f73d0cf5d18c)
+- CompoundHandler - [0xa0c39f6d8de3707a513bb1e8fa55f73d0cf5d18c](https://io/address/0xa0c39f6d8de3707a513bb1e8fa55f73d0cf5d18c)
+- StablecoinswapHandler - [0x40ac61EFcEA46AFaFeD904462F15258Ef87B0Ecc](https://etherscan.io/address/0x40ac61EFcEA46AFaFeD904462F15258Ef87B0Ecc)
+- FulcrumHandler - [0xe309E4BE9dD0ad45958BF44f01923e56749e3837](https://etherscan.io/address/0xe309E4BE9dD0ad45958BF44f01923e56749e3837)
