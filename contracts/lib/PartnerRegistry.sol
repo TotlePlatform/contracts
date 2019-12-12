@@ -2,26 +2,28 @@ pragma solidity 0.5.7;
 
 import "./Ownable.sol";
 import "./Partner.sol";
+import "./Pausable.sol";
 
-contract PartnerRegistry is Ownable {
+contract PartnerRegistry is Ownable, Pausable {
 
     address target;
     mapping(address => bool) partnerContracts;
     address payable public companyBeneficiary;
-    uint256 public companyPercentage;
+    uint256 public basePercentage;
+    PartnerRegistry public previousRegistry;
 
     event PartnerRegistered(address indexed creator, address indexed beneficiary, address partnerContract);
 
-
-    constructor(address _target, address payable _companyBeneficiary, uint256 _companyPercentage) public {
+    constructor(PartnerRegistry _previousRegistry, address _target, address payable _companyBeneficiary, uint256 _basePercentage) public {
+        previousRegistry = _previousRegistry;
         target = _target;
         companyBeneficiary = _companyBeneficiary;
-        companyPercentage = _companyPercentage;
+        basePercentage = _basePercentage;
     }
 
-    function registerPartner(address payable partnerBeneficiary, uint256 partnerPercentage) external {
+    function registerPartner(address payable partnerBeneficiary, uint256 partnerPercentage) whenNotPaused external {
         Partner newPartner = Partner(createClone());
-        newPartner.init(companyBeneficiary, companyPercentage, partnerBeneficiary, partnerPercentage);
+        newPartner.init(this,address(0x0000000000000000000000000000000000000000), 0, partnerBeneficiary, partnerPercentage);
         partnerContracts[address(newPartner)] = true;
         emit PartnerRegistered(address(msg.sender), partnerBeneficiary, address(newPartner));
     }
@@ -33,12 +35,12 @@ contract PartnerRegistry is Ownable {
         uint256 partnerPercentage
     ) external onlyOwner {
         Partner newPartner = Partner(createClone());
-        newPartner.init(_companyBeneficiary, _companyPercentage, partnerBeneficiary, partnerPercentage);
+        newPartner.init(PartnerRegistry(0x0000000000000000000000000000000000000000), _companyBeneficiary, _companyPercentage, partnerBeneficiary, partnerPercentage);
         partnerContracts[address(newPartner)] = true;
         emit PartnerRegistered(address(msg.sender), partnerBeneficiary, address(newPartner));
     }
 
-    function deletePartner(address _partnerAddress) public onlyOwner {
+    function deletePartner(address _partnerAddress) external onlyOwner {
         partnerContracts[_partnerAddress] = false;
     }
 
@@ -53,12 +55,12 @@ contract PartnerRegistry is Ownable {
         }
     }
 
-    function isValidPartner(address partnerContract) public view returns(bool) {
-        return partnerContracts[partnerContract];
+    function isValidPartner(address partnerContract) external view returns(bool) {
+        return partnerContracts[partnerContract] || previousRegistry.isValidPartner(partnerContract);
     }
 
-    function updateCompanyInfo(address payable newCompanyBeneficiary, uint256 newCompanyPercentage) public onlyOwner {
+    function updateCompanyInfo(address payable newCompanyBeneficiary, uint256 newBasePercentage) external onlyOwner {
         companyBeneficiary = newCompanyBeneficiary;
-        companyPercentage = newCompanyPercentage;
+        basePercentage = newBasePercentage;
     }
 }

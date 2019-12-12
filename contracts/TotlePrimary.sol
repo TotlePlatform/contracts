@@ -55,6 +55,7 @@ contract TotlePrimary is Withdrawable, Pausable {
         address payable partnerContract;
         uint256 expirationBlock;
         bytes32 id;
+        uint256 maxGasPrice;
         uint8 v;
         bytes32 r;
         bytes32 s;
@@ -114,8 +115,13 @@ contract TotlePrimary is Withdrawable, Pausable {
     }
 
     modifier validSignature(SwapCollection memory swaps){
-        bytes32 hash = keccak256(abi.encode(swaps.swaps, swaps.partnerContract, swaps.expirationBlock, swaps.id, msg.sender));
+        bytes32 hash = keccak256(abi.encode(swaps.swaps, swaps.partnerContract, swaps.expirationBlock, swaps.id, swaps.maxGasPrice, msg.sender));
         require(signers[ecrecover(keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash)), swaps.v, swaps.r, swaps.s)], "Invalid signature");
+        _;
+    }
+
+    modifier notAboveMaxGas(SwapCollection memory swaps){
+        require(tx.gasprice <= swaps.maxGasPrice, "Gas price too high");
         _;
     }
 
@@ -129,6 +135,7 @@ contract TotlePrimary is Withdrawable, Pausable {
         whenNotPaused
         notExpired(swaps)
         validSignature(swaps)
+        notAboveMaxGas(swaps)
     {
         TokenBalance[20] memory balances;
         balances[0] = TokenBalance(address(Utils.eth_address()), msg.value);
@@ -387,7 +394,7 @@ contract TotlePrimary is Withdrawable, Pausable {
             if(balances[tokenIndex].tokenAddress == Utils.eth_address()){
                 destination.transfer(tokenAmount);
             } else {
-                ERC20SafeTransfer.safeTransfer(balances[tokenIndex].tokenAddress, destination, tokenAmount);
+                require(ERC20SafeTransfer.safeTransfer(balances[tokenIndex].tokenAddress, destination, tokenAmount),'Transfer failed');
             }
         }
     }
