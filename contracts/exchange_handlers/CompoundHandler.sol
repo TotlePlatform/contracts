@@ -16,7 +16,7 @@ contract CToken is ERC20 {
 }
 
 contract CEther is CToken {
-    function mint() external payable returns (uint);
+    function mint() external payable;
 }
 
 contract CERC20 is CToken {
@@ -137,14 +137,7 @@ contract CompoundHandler is ExchangeHandler, AllowanceSetter {
   
 
     /// @notice payable fallback to block EOA sending eth
-    /// @dev this should fail if an EOA (or contract with 0 bytecode size) tries to send ETH to this contract
     function() external payable {
-        // Check in here that the sender is a contract! (to stop accidents)
-        uint256 size;
-        address sender = msg.sender;
-        assembly {
-            size := extcodesize(sender)
-        }
-        require(size > 0);
+        
     }
 }

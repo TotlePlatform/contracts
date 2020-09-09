@@ -8,31 +8,29 @@ import "../lib/AllowanceSetter.sol";
 import "../lib/Utils.sol";
 import "./ExchangeHandler.sol";
 
-/// @title BancorConverter
-/// @notice Bancor converter contract interface
-interface BancorConverter {
-    function quickConvert(address[] calldata _path, uint256 _amount, uint256 _minReturn) external payable returns (uint256);
-    function registry() external view returns (IContractRegistry);
-    function BANCOR_GAS_PRICE_LIMIT() external view returns (bytes32);
-    function BANCOR_NETWORK() external view returns (bytes32);
-}
-
-/// @title IContractRegistry
-/// @notice Bancor contract registry interface
-interface IContractRegistry {
-    function getAddress(bytes32 _contractName) external view returns (address);
+/// @title BancorNetwork
+/// @notice Bancor Network contract interface
+interface BancorNetwork {
+    function convert2(
+        address[] calldata _path,
+        uint256 _amount,
+        uint256 _minReturn,
+        address _affiliateAccount,
+        uint256 _affiliateFee
+    ) external payable returns (uint256);
+    function claimAndConvert2(
+        address[] calldata _path,
+        uint256 _amount,
+        uint256 _minReturn,
+        address _affiliateAccount,
+        uint256 _affiliateFee
+    ) external returns (uint256);
 }
 
 /// @title IBancorGasPriceLimit
 /// @notice Bancor gas price limit contract interface
 interface IBancorGasPriceLimit {
     function gasPrice() external view returns (uint256);
-}
-
-/// @title BancorNetwork
-/// @notice Bancor Network contract interface
-interface BancorNetwork {
-    function getReturnByPath(address[] calldata _path, uint256 _amount) external view returns (uint256) ;
 }
 
 /// @title Interface for all exchange handler contracts
@@ -44,40 +42,15 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
     */
 
     struct OrderData {
-        address converterAddress;
-        address[5] conversionPath;
+        address networkAddress;
+        address[7] conversionPath;
         address destinationToken;
+        uint256 maxSpend;
     }
 
     /*
     *   Public functions
     */
-
-    /// @notice Perform exchange-specific checks on the given order
-    /// @param data OrderData struct containing order values
-    /// @return checksPassed value representing pass or fail
-    function staticExchangeChecks(
-        OrderData memory data
-    )
-        internal
-        view
-        returns (bool checksPassed)
-    {
-        BancorConverter converter = BancorConverter(data.converterAddress);
-        IBancorGasPriceLimit gasPriceLimitContract = IBancorGasPriceLimit(
-            converter.registry().getAddress(converter.BANCOR_GAS_PRICE_LIMIT())
-        );
-
-        uint256 gasPriceLimit = gasPriceLimitContract.gasPrice();
-        checksPassed = tx.gasprice <= gasPriceLimit;
-
-        /* logger.log(
-            "Checking gas price arg2: tx.gasprice, arg3: gasPriceLimit",
-            tx.gasprice,
-            gasPriceLimit
-        ); */
-    }
-
 
     function performOrder(
         bytes memory genericPayload,
@@ -90,20 +63,25 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         OrderData memory data = abi.decode(genericPayload, (OrderData));
-        if(!staticExchangeChecks(data)){
-            if(msg.value > 0){
-                msg.sender.transfer(msg.value);
-            } else {
-                ERC20SafeTransfer.safeTransfer(data.conversionPath[0], msg.sender, availableToSpend);
-            }
+        approve(data.networkAddress, data.conversionPath[0]);
+        amountSpentOnOrder = Math.min(Math.min(availableToSpend, targetAmount), data.maxSpend);
+        if(msg.value > 0){
+            amountReceivedFromOrder = BancorNetwork(data.networkAddress).convert2.value(msg.value > 0 ? amountSpentOnOrder : 0)(
+                trimAddressArray(data.conversionPath),
+                amountSpentOnOrder,
+                1,
+                address(0x0),
+                0
+            );
+        } else {
+            amountReceivedFromOrder = BancorNetwork(data.networkAddress).claimAndConvert2(
+                trimAddressArray(data.conversionPath),
+                amountSpentOnOrder,
+                1,
+                address(0x0),
+                0
+            );
         }
-        approve(data.converterAddress, data.conversionPath[0]);
-        amountSpentOnOrder = Math.min(availableToSpend, targetAmount);
-        amountReceivedFromOrder = BancorConverter(data.converterAddress).quickConvert.value(msg.value)(
-            trimAddressArray(data.conversionPath),
-            amountSpentOnOrder,
-            1
-        );
         if(amountSpentOnOrder < availableToSpend){
             if(msg.value > 0){
                 msg.sender.transfer(SafeMath.sub(availableToSpend, amountSpentOnOrder));
@@ -122,10 +100,10 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
     /// @notice Takes the static array, trims the excess and returns a dynamic array
     /// @param addresses the static array
     /// @return address[] the dynamic array
-    function trimAddressArray(address[5] memory addresses) internal pure returns (address[] memory) {
+    function trimAddressArray(address[7] memory addresses) internal pure returns (address[] memory) {
         uint256 length = 0;
         uint256 index = 0;
-        for (index = 0; index < 5; index++){
+        for (index = 0; index < 7; index++){
             if (addresses[index] == address(0x0)){
                 continue;
             }
@@ -154,14 +132,6 @@ contract BancorHandler is ExchangeHandler, AllowanceSetter {
     */
 
     /// @notice payable fallback to allow handler or exchange contracts to return ether
-    /// @dev only accounts containing code (ie. contracts) can send ether to this contract
-    function() external payable whenNotPaused {
-        // Check in here that the sender is a contract! (to stop accidents)
-        uint256 size;
-        address sender = msg.sender;
-        assembly {
-            size := extcodesize(sender)
-        }
-        require(size > 0, "EOA cannot send ether to bancor fallback");
+    function() external payable {
     }
 }

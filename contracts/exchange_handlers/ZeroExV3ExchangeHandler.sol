@@ -17,14 +17,14 @@ interface WETH {
 
 /// @title ZeroExExchangeHandler
 /// @notice Handles the all ZeroExExchange trades for the primary contract
-contract ZeroExV3ExchangeHandler is TotleControl, ExchangeHandler, AllowanceSetter  {
+contract ZeroExV3ExchangeHandler is ExchangeHandler, AllowanceSetter  {
 
     /*
     *   State Variables
     */
     uint256 constant PROTOCOL_FEE_CONSTANT = 150000;
     IExchangeCore public exchange;
-    /// @dev note that this is dependent on the deployment of 0xV2. This is the ERC20 asset proxy + the mainnet address of the ZRX token
+    /// @dev note that this is dependent on the deployment of 0xV3. This is the ERC20 asset proxy + the mainnet address of the ZRX token
     bytes constant ZRX_ASSET_DATA = "\xf4\x72\x61\xb0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xe4\x1d\x24\x89\x57\x1d\x32\x21\x89\x24\x6d\xaf\xa5\xeb\xde\x1f\x46\x99\xf4\x98";
     address ERC20_ASSET_PROXY;
     WETH weth;
@@ -37,9 +37,8 @@ contract ZeroExV3ExchangeHandler is TotleControl, ExchangeHandler, AllowanceSett
     /// @param _exchange Address of the IExchangeCore exchange
     constructor(
         address _exchange,
-        address _weth,
-        address _primary
-    ) TotleControl(_primary)
+        address _weth
+    ) 
         public
     {
         exchange = IExchangeCore(_exchange);
@@ -89,6 +88,9 @@ contract ZeroExV3ExchangeHandler is TotleControl, ExchangeHandler, AllowanceSett
         LibOrder.OrderInfo memory orderInfo = exchange.getOrderInfo(
             getZeroExOrder(data)
         );
+        if(orderInfo.orderStatus != 3){
+            return 0;
+        }
         uint makerAssetAvailable = getAssetDataAvailable(data.makerAssetData, data.makerAddress);
 
         uint maxFromMakerFee = data.makerFee == 0 ? Utils.max_uint() : getPartialAmount(
@@ -158,11 +160,13 @@ contract ZeroExV3ExchangeHandler is TotleControl, ExchangeHandler, AllowanceSett
     )
         public
         payable
-        onlyTotle
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         OrderData memory data = abi.decode(genericPayload, (OrderData));
         address sourceAddress = toAddress(data.takerAssetData, 16);
+        if(sourceAddress == address(weth)){
+            require(msg.value == availableToSpend);
+        }
         if(!staticExchangeChecks(data)){
             if(sourceAddress == address(weth)){
                 msg.sender.transfer(availableToSpend);
@@ -172,19 +176,22 @@ contract ZeroExV3ExchangeHandler is TotleControl, ExchangeHandler, AllowanceSett
             return (0,0);
 
         }
+        uint256 amountToGive = getAmountToGive(data);
         if(sourceAddress == address(weth)){
             weth.deposit.value(availableToSpend)();
         }
-        approveAddress(ERC20_ASSET_PROXY, sourceAddress);
+        if(amountToGive > 0){
+            approveAddress(ERC20_ASSET_PROXY, sourceAddress);
 
-        LibFillResults.FillResults memory results = exchange.fillOrder.value(PROTOCOL_FEE_CONSTANT*tx.gasprice)(
-            getZeroExOrder(data),
-            Math.min(targetAmount, Math.min(availableToSpend, getAmountToGive(data))),
-            data.signature
-        );
+            LibFillResults.FillResults memory results = exchange.fillOrder.value(PROTOCOL_FEE_CONSTANT*tx.gasprice)(
+                getZeroExOrder(data),
+                Math.min(targetAmount, Math.min(availableToSpend, getAmountToGive(data))),
+                data.signature
+            );
 
-        amountSpentOnOrder = results.takerAssetFilledAmount;
-        amountReceivedFromOrder = results.makerAssetFilledAmount;
+            amountSpentOnOrder = results.takerAssetFilledAmount;
+            amountReceivedFromOrder = results.makerAssetFilledAmount;
+        }
 
         if(amountSpentOnOrder < availableToSpend){
             if(sourceAddress == address(weth)){

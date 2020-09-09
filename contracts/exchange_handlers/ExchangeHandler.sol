@@ -6,7 +6,7 @@ import "../lib/Pausable.sol";
 /* import "../lib/Logger.sol"; */
 
 /// @title Interface for all exchange handler contracts
-contract ExchangeHandler is Withdrawable, Pausable {
+contract ExchangeHandler is Withdrawable {
 
     /*
     *   State Variables

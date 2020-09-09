@@ -43,6 +43,7 @@ contract UniswapHandler is ExchangeHandler, AllowanceSetter {
     struct OrderData {
         address sourceToken;
         address destinationToken;
+        uint256 maxSpend;
     }
 
     UniswapFactory private uniswapFactory;
@@ -73,7 +74,7 @@ contract UniswapHandler is ExchangeHandler, AllowanceSetter {
         OrderData memory data = abi.decode(genericPayload, (OrderData));
         UniswapExchange ex = UniswapExchange(uniswapFactory.getExchange(data.sourceToken == Utils.eth_address() ? data.destinationToken: data.sourceToken));
         approve(data.sourceToken, address(ex));
-        uint256 maxToSpend = getMaxToSpend(targetAmountIsSource, targetAmount, availableToSpend);
+        uint256 maxToSpend = getMaxToSpend(targetAmountIsSource, targetAmount, availableToSpend, data.maxSpend);
         if(data.sourceToken == Utils.eth_address()){
             return performEthToToken(data, ex, targetAmountIsSource, targetAmount, maxToSpend, availableToSpend);
         } else if(data.destinationToken == Utils.eth_address()){
@@ -165,14 +166,15 @@ contract UniswapHandler is ExchangeHandler, AllowanceSetter {
     function getMaxToSpend(
         bool targetAmountIsSource,
         uint256 targetAmount,
-        uint256 availableToSpend
+        uint256 availableToSpend,
+        uint256 maxOrderSpend
     )
         internal
         returns (uint256 max)
     {
         max = availableToSpend;
         if(targetAmountIsSource){
-            max = Math.min(max, targetAmount);
+            max = Math.min(Math.min(max, targetAmount), maxOrderSpend);
         }
         return max;
     }
