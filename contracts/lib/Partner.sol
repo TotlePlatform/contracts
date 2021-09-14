@@ -40,15 +40,17 @@ contract Partner {
     }
 
     function payout(
-        address[] memory tokens,
-        uint256[] memory amounts
+        address[] memory tokens
     ) public {
         uint totalFeePercentage = getTotalFeePercentage();
         address payable companyBeneficiary = companyBeneficiary();
+        uint256[] memory amountsPaidOut = new uint256[](tokens.length);
         // Payout both the partner and the company at the same time
         for(uint256 index = 0; index<tokens.length; index++){
-            uint256 partnerAmount = SafeMath.div(SafeMath.mul(amounts[index], partnerPercentage), getTotalFeePercentage());
-            uint256 companyAmount = amounts[index] - partnerAmount;
+            uint256 balance = tokens[index] == Utils.eth_address() ? address(this).balance : ERC20(tokens[index]).balanceOf(address(this));
+            amountsPaidOut[index] = balance;
+            uint256 partnerAmount = SafeMath.div(SafeMath.mul(balance, partnerPercentage), getTotalFeePercentage());
+            uint256 companyAmount = balance - partnerAmount;
             if(tokens[index] == Utils.eth_address()){
                 partnerBeneficiary.transfer(partnerAmount);
                 companyBeneficiary.transfer(companyAmount);
@@ -57,7 +59,7 @@ contract Partner {
                 ERC20SafeTransfer.safeTransfer(tokens[index], companyBeneficiary, companyAmount);
             }
         }
-	emit LogPayout(tokens,amounts);
+	    emit LogPayout(tokens,amountsPaidOut);
     }
 
     function getTotalFeePercentage() public view returns (uint256){
