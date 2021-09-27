@@ -189,6 +189,7 @@ contract TotlePrimary is Withdrawable, Pausable {
     }
 
     function addSigner(address newSigner) public onlyOwner {
+	require(newSigner != address(0x0);
         signers[newSigner] = true;
     }
 
