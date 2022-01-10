@@ -1,6 +1,7 @@
-pragma solidity 0.5.7;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
-import "./Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title A contract which can be used to ensure only the TotlePrimary contract can call
 /// some functions
@@ -18,7 +19,7 @@ contract TotleControl is Ownable {
     /// @notice Contract constructor
     /// @dev As this contract inherits ownable, msg.sender will become the contract owner
     /// @param _totlePrimary the address of the contract to be set as totlePrimary
-    constructor(address _totlePrimary) public {
+    constructor(address _totlePrimary) {
         authorizedPrimaries[_totlePrimary] = true;
     }
 

@@ -1,31 +1,31 @@
-pragma solidity 0.5.7;
-pragma experimental ABIEncoderV2;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
-import "../lib/ERC20.sol";
-import "../lib/SafeMath.sol";
-import "../lib/Math.sol";
 import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
 import "./ExchangeHandler.sol";
 
-contract PotLike {
+interface PotLike {
     function chi() external returns (uint256);
+
     function rho() external returns (uint256);
+
     function drip() external returns (uint256);
 }
 
-contract Chai is ERC20 {
+interface Chai is IERC20 {
     function exit(address src, uint256 chaiAmount) external;
+
     function join(address dst, uint256 daiAmount) external;
 }
 
 /// @title Handler for Chai
 contract ChaiHandler is ExchangeHandler, AllowanceSetter {
     /*
-    *   Types
-    */
+     *   Types
+     */
     Chai constant CHAI = Chai(0x06AF07097C9Eeb7fD685c692751D5C66dB49c215);
-    ERC20 constant DAI = ERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
+    IERC20 constant DAI = IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
     PotLike constant POT = PotLike(0x197E90f9FAD81970bA7976f33CbD77088E5D7cf7);
 
     struct OrderData {
@@ -34,25 +34,23 @@ contract ChaiHandler is ExchangeHandler, AllowanceSetter {
     }
 
     /*
-    *   Internal functions
-    */
+     *   Internal functions
+     */
 
     function performOrder(
         bytes memory genericPayload,
         uint256 availableToSpend,
-        uint256 targetAmount,
-        bool targetAmountIsSource
+        uint256 targetAmount
     )
         public
         payable
+        override
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         OrderData memory data = abi.decode(genericPayload, (OrderData));
         uint256 maxToSpend = getMaxToSpend(
-            targetAmountIsSource,
             targetAmount,
-            availableToSpend,
-            data.maxSpend
+            Math.min(availableToSpend, data.maxSpend)
         );
         if (data.isDeposit) {
             (amountSpentOnOrder, amountReceivedFromOrder) = performJoinAction(
@@ -93,26 +91,13 @@ contract ChaiHandler is ExchangeHandler, AllowanceSetter {
         DAI.transfer(msg.sender, amountReceivedFromOrder);
     }
 
-    function getMaxToSpend(
-        bool targetAmountIsSource,
-        uint256 targetAmount,
-        uint256 availableToSpend,
-        uint256 maxOrderSpend
-    ) internal returns (uint256 max) {
-        max = availableToSpend;
-        if (targetAmountIsSource) {
-            max = Math.min(Math.min(max, targetAmount), maxOrderSpend);
-        }
-        return max;
-    }
-
     function getReturnByJoin(uint256 wad) external returns (uint256) {
-        uint256 chi = (now > POT.rho()) ? POT.drip() : POT.chi();
+        uint256 chi = (block.timestamp > POT.rho()) ? POT.drip() : POT.chi();
         return rdiv(wad, chi);
     }
 
     function getReturnByExit(uint256 wad) external returns (uint256) {
-        uint256 chi = (now > POT.rho()) ? POT.drip() : POT.chi();
+        uint256 chi = (block.timestamp > POT.rho()) ? POT.drip() : POT.chi();
         return rmul(chi, wad);
     }
 

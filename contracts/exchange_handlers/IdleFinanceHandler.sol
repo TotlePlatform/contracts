@@ -1,9 +1,6 @@
-pragma solidity 0.5.7;
-pragma experimental ABIEncoderV2;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
-import "../lib/ERC20.sol";
-import "../lib/SafeMath.sol";
-import "../lib/Math.sol";
 import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
 import "./ExchangeHandler.sol";
@@ -31,21 +28,20 @@ contract IdleFinanceHandler is ExchangeHandler, AllowanceSetter {
     function performOrder(
         bytes memory genericPayload,
         uint256 availableToSpend,
-        uint256 targetAmount,
-        bool targetAmountIsSource
+        uint256 targetAmount
     )
         public
+        override
         payable
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         OrderData memory data = abi.decode(genericPayload, (OrderData));
         uint256 maxToSpend = getMaxToSpend(
-            targetAmountIsSource,
             targetAmount,
             availableToSpend
         );
         IIdleToken idleToken = IIdleToken(data.idleToken);
-        ERC20 token = ERC20(data.underlyingToken);
+        IERC20 token = IERC20(data.underlyingToken);
         if (data.isRedeem) {
             amountSpentOnOrder = maxToSpend;
             amountReceivedFromOrder = idleToken.redeemIdleToken(
@@ -56,31 +52,9 @@ contract IdleFinanceHandler is ExchangeHandler, AllowanceSetter {
             approveAddress(address(idleToken), address(token));
             amountSpentOnOrder = maxToSpend;
             amountReceivedFromOrder = idleToken.mintIdleToken(maxToSpend, true, address(0x0000000000000000000000000000000000000000));
-            ERC20(address(idleToken)).transfer(msg.sender, amountReceivedFromOrder);
+            IERC20(address(idleToken)).transfer(msg.sender, amountReceivedFromOrder);
         }
     }
 
-    function getMaxToSpend(
-        bool targetAmountIsSource,
-        uint256 targetAmount,
-        uint256 availableToSpend
-    ) internal returns (uint256 max) {
-        max = availableToSpend;
-        if (targetAmountIsSource) {
-            max = Math.min(max, targetAmount);
-        }
-        return max;
-    }
 
-    /// @notice payable fallback to block EOA sending eth
-    /// @dev this should fail if an EOA (or contract with 0 bytecode size) tries to send ETH to this contract
-    function() external payable {
-        // Check in here that the sender is a contract! (to stop accidents)
-        uint256 size;
-        address sender = msg.sender;
-        assembly {
-            size := extcodesize(sender)
-        }
-        require(size > 0);
-    }
 }

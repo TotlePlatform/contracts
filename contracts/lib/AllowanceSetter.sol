@@ -1,7 +1,8 @@
-pragma solidity 0.5.7;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
-import "./ERC20.sol";
-import "./ERC20SafeTransfer.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /// @title A contract which is used to check and set allowances of tokens
 /// @dev In order to use this contract is must be inherited in the contract which is using
 /// its functionality
@@ -14,8 +15,8 @@ contract AllowanceSetter {
     /// @param addressToApprove the address which we want to approve to transfer the token
     /// @param token the token address which we want to call approve on
     function approveAddress(address addressToApprove, address token) internal {
-        if(ERC20(token).allowance(address(this), addressToApprove) == 0) {
-            require(ERC20SafeTransfer.safeApprove(token, addressToApprove, MAX_UINT));
+        if(IERC20(token).allowance(address(this), addressToApprove) == 0) {
+            SafeERC20.safeApprove(IERC20(token), addressToApprove, MAX_UINT);
         }
     }
 

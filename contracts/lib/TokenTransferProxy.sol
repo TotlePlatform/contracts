@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: UNLICENSED
 /*
 
   Copyright 2018 ZeroEx Intl.
@@ -16,11 +17,11 @@
 
 */
 
-pragma solidity 0.5.7;
+pragma solidity 0.8.9;
 
-import "./ERC20.sol";
-import "./ERC20SafeTransfer.sol";
-import "./Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title TokenTransferProxy - Transfers tokens on behalf of contracts that have been approved via decentralized governance.
 /// @author Amir Bandeali - <amir@0xProject.com>, Will Warren - <will@0xProject.com>
@@ -43,7 +44,6 @@ contract TokenTransferProxy is Ownable {
     }
 
     mapping (address => bool) public authorized;
-    address[] public authorities;
 
     event LogAuthorizedAddressAdded(address indexed target, address indexed caller);
     event LogAuthorizedAddressRemoved(address indexed target, address indexed caller);
@@ -60,7 +60,6 @@ contract TokenTransferProxy is Ownable {
         targetNotAuthorized(target)
     {
         authorized[target] = true;
-        authorities.push(target);
         emit LogAuthorizedAddressAdded(target, msg.sender);
     }
 
@@ -71,14 +70,8 @@ contract TokenTransferProxy is Ownable {
         onlyOwner
         targetAuthorized(target)
     {
-        delete authorized[target];
-        for (uint i = 0; i < authorities.length; i++) {
-            if (authorities[i] == target) {
-                authorities[i] = authorities[authorities.length - 1];
-                authorities.length -= 1;
-                break;
-            }
-        }
+        authorized[target] = false;
+
         emit LogAuthorizedAddressRemoved(target, msg.sender);
     }
 
@@ -87,7 +80,6 @@ contract TokenTransferProxy is Ownable {
     /// @param from Address to transfer token from.
     /// @param to Address to transfer token to.
     /// @param value Amount of token to transfer.
-    /// @return Success of transfer.
     function transferFrom(
         address token,
         address from,
@@ -95,23 +87,7 @@ contract TokenTransferProxy is Ownable {
         uint value)
         public
         onlyAuthorized
-        returns (bool)
     {
-        require(ERC20SafeTransfer.safeTransferFrom(token, from, to, value));
-        return true;
-    }
-
-    /*
-     * Public view functions
-     */
-
-    /// @dev Gets all authorized addresses.
-    /// @return Array of authorized addresses.
-    function getAuthorizedAddresses()
-        public
-        view
-        returns (address[] memory)
-    {
-        return authorities;
+        SafeERC20.safeTransferFrom(IERC20(token), from, to, value);
     }
 }

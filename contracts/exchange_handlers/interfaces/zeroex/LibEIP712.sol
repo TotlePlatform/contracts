@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: UNLICENSED
 /*
 
   Copyright 2018 ZeroEx Intl.
@@ -16,7 +17,7 @@
 
 */
 
-pragma solidity 0.5.7;
+pragma solidity 0.8.9;
 
 contract LibEIP712 {
 
@@ -43,7 +44,6 @@ contract LibEIP712 {
     bytes32 public EIP712_DOMAIN_HASH;
 
     constructor ()
-        public
     {
         EIP712_DOMAIN_HASH = keccak256(abi.encodePacked(
             EIP712_DOMAIN_SEPARATOR_SCHEMA_HASH,
@@ -55,7 +55,7 @@ contract LibEIP712 {
 
     /// @dev Calculates EIP712 encoding for a hash struct in this EIP712 Domain.
     /// @param hashStruct The EIP712 hash struct.
-    /// @return EIP712 hash applied to this EIP712 Domain.
+    /// @return result EIP712 hash applied to this EIP712 Domain.
     function hashEIP712Message(bytes32 hashStruct)
         internal
         view

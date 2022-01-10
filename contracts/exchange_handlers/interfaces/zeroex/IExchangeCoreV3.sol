@@ -1,43 +1,40 @@
-pragma solidity 0.5.7;
-pragma experimental ABIEncoderV2;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
 import "./LibOrderV3.sol";
 import "./LibFillResults.sol";
 
-
-contract IExchangeCore {
-
+abstract contract IExchangeCore {
     bytes public ZRX_ASSET_DATA;
 
     /// @dev Fills the input order.
     /// @param order Order struct containing order specifications.
     /// @param takerAssetFillAmount Desired amount of takerAsset to sell.
     /// @param signature Proof that order has been created by maker.
-    /// @return Amounts filled and fees paid by maker and taker.
+    /// @return fillResults Amounts filled and fees paid by maker and taker.
     function fillOrder(
         LibOrder.Order memory order,
         uint256 takerAssetFillAmount,
         bytes memory signature
     )
-        public
+        external
         payable
+        virtual
         returns (LibFillResults.FillResults memory fillResults);
 
     function fillOrderNoThrow(
         LibOrder.Order memory order,
         uint256 takerAssetFillAmount,
         bytes memory signature
-    )
-        public
-        returns (LibFillResults.FillResults memory fillResults);
+    ) external virtual returns (LibFillResults.FillResults memory fillResults);
 
     /// @dev Gets information about an order: status, hash, and amount filled.
     /// @param order Order to gather information on.
-    /// @return OrderInfo Information about the order and its state.
-    ///                   See LibOrder.OrderInfo for a complete description.
+    /// @return orderInfo Information about the order and its state. See LibOrder.OrderInfo for a complete description.
     function getOrderInfo(LibOrder.Order memory order)
-        public
+        external
         view
+        virtual
         returns (LibOrder.OrderInfo memory orderInfo);
 
     /// @dev Gets an asset proxy.
@@ -46,14 +43,12 @@ contract IExchangeCore {
     function getAssetProxy(bytes4 assetProxyId)
         external
         view
+        virtual
         returns (address);
 
     function isValidSignature(
         bytes32 hash,
         address signerAddress,
         bytes memory signature
-    )
-        public
-        view
-        returns (bool isValid);
+    ) external view virtual returns (bool isValid);
 }

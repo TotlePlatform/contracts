@@ -1,6 +1,7 @@
-pragma solidity 0.5.7;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
-import "./ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /*
     Modified Util contract as used by Kyber Network
@@ -47,7 +48,7 @@ library Utils {
             let wordLength := 0x20
 
             let success := call(
-                                gas, // Amount of gas
+                                gas(), // Amount of gas
                                 token, // Address to call
                                 0, // ether to send
                                 ptr, // ptr to input data
@@ -84,8 +85,8 @@ library Utils {
         returns (bool)
     {
         return (
-            ERC20(tokenAddress).allowance(tokenOwner, addressToAllow) >= tokenAmount &&
-            ERC20(tokenAddress).balanceOf(tokenOwner) >= tokenAmount
+            IERC20(tokenAddress).allowance(tokenOwner, addressToAllow) >= tokenAmount &&
+            IERC20(tokenAddress).balanceOf(tokenOwner) >= tokenAmount
         );
     }
 
@@ -116,11 +117,11 @@ library Utils {
         return (numerator + denominator - 1) / denominator; //avoid rounding down errors
     }
 
-    function calcDestAmount(ERC20 src, ERC20 dest, uint srcAmount, uint rate) internal returns (uint) {
+    function calcDestAmount(IERC20 src, IERC20 dest, uint srcAmount, uint rate) internal returns (uint) {
         return calcDstQty(srcAmount, getDecimals(address(src)), getDecimals(address(dest)), rate);
     }
 
-    function calcSrcAmount(ERC20 src, ERC20 dest, uint destAmount, uint rate) internal returns (uint) {
+    function calcSrcAmount(IERC20 src, IERC20 dest, uint destAmount, uint rate) internal returns (uint) {
         return calcSrcQty(destAmount, getDecimals(address(src)), getDecimals(address(dest)), rate);
     }
 
