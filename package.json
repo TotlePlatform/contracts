@@ -1,0 +1,51 @@
+{
+  "name": "totle-contracts",
+  "version": "0.1.0",
+  "description": "Totle Smart Contracts",
+  "main": "",
+  "scripts": {
+    "test": "./node_modules/.bin/truffle test --stacktrace-extra",
+    "compile": "./node_modules/.bin/truffle compile",
+    "deploy": "truffle compile && truffle migrate",
+    "chain": "ganache-cli -d -e 100000 -l 7500000",
+    "develop": "./node_modules/.bin/truffle develop",
+    "balances": "node scripts/getAffiliateBalances.js",
+    "console": "./node_modules/.bin/truffle console --network liveRemote"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TotlePlatform/contracts.git"
+  },
+  "contributors": [
+    "Nate Welch <nate@totle.com>"
+  ],
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/TotlePlatform/contracts/issues"
+  },
+  "homepage": "https://github.com/TotlePlatform/contracts#readme",
+  "dependencies": {
+    "@ethereumjs/tx": "^3.4.0",
+    "@openzeppelin/contracts": "^4.4.0",
+    "@truffle/hdwallet-provider": "^1.4.2",
+    "0x.js": "^0.36.3",
+    "babel-polyfill": "^6.23.0",
+    "babel-preset-es2015": "^6.18.0",
+    "babel-preset-stage-2": "^6.18.0",
+    "babel-preset-stage-3": "^6.17.0",
+    "babel-register": "^6.23.0",
+    "ethers": "^4.0.0-beta.14",
+    "openzeppelin-solidity": "1.12.0",
+    "truffle": "^5.4.25",
+    "web3-provider-engine": "^14.1.0"
+  },
+  "devDependencies": {
+    "babel-eslint": "^7.2.3",
+    "eslint": "^3.19.0",
+    "ethereumjs-abi": "^0.6.5",
+    "ethereumjs-util": "^5.1.5",
+    "js-sha256": "^0.9.0",
+    "solidity-coverage": "^0.5.4",
+    "web3": "2.0.0-alpha.1"
+  }
+}

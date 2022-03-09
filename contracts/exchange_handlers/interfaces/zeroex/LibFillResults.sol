@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: UNLICENSED
 /*
 
   Copyright 2018 ZeroEx Intl.
@@ -16,12 +17,10 @@
 
 */
 
-pragma solidity 0.5.7;
-import "../../../lib/SafeMath.sol";
+pragma solidity 0.8.9;
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-
-contract LibFillResults
-{
+contract LibFillResults {
     struct FillResults {
         uint256 makerAssetFilledAmount;  // Total amount of makerAsset(s) filled.
         uint256 takerAssetFilledAmount;  // Total amount of takerAsset(s) filled.

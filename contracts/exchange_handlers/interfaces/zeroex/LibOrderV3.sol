@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: UNLICENSED
 /*
 
   Copyright 2018 ZeroEx Intl.
@@ -16,12 +17,11 @@
 
 */
 
-pragma solidity 0.5.7;
+pragma solidity 0.8.9;
 import "./LibEIP712.sol";
+ 
 
-
-contract LibOrder is
-    LibEIP712
+contract LibOrder is LibEIP712
 {
     // Hash for the EIP712 Order Schema
     bytes32 constant internal EIP712_ORDER_SCHEMA_HASH = keccak256(abi.encodePacked(
@@ -82,7 +82,7 @@ contract LibOrder is
 
     /// @dev Calculates Keccak-256 hash of the order.
     /// @param order The order structure.
-    /// @return Keccak-256 EIP712 hash of the order.
+    /// @return orderHash Keccak-256 EIP712 hash of the order.
     function getOrderHash(Order memory order)
         internal
         view
@@ -94,7 +94,7 @@ contract LibOrder is
 
     /// @dev Calculates EIP712 hash of the order.
     /// @param order The order structure.
-    /// @return EIP712 hash of the order.
+    /// @return result EIP712 hash of the order.
     function hashOrder(Order memory order)
         internal
         pure

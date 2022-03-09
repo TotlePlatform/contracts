@@ -1,15 +1,11 @@
-pragma solidity 0.5.7;
-pragma experimental ABIEncoderV2;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
-import "../lib/ERC20.sol";
-import "../lib/SafeMath.sol";
-import "../lib/Math.sol";
 import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
-import "../lib/ERC20SafeTransfer.sol";
 import "./ExchangeHandler.sol";
 
-contract CurveFi is ERC20 {
+interface CurveFi is IERC20 {
     function exchange_underlying(
         int128 sourceAssetId,
         int128 destinationAssetId,
@@ -52,20 +48,19 @@ contract CurveFiHandler is ExchangeHandler, AllowanceSetter {
     function performOrder(
         bytes memory genericPayload,
         uint256 availableToSpend,
-        uint256 targetAmount,
-        bool targetAmountIsSource
+        uint256 targetAmount
     )
         public
         payable
+        override
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         OrderData memory data = abi.decode(genericPayload, (OrderData));
         uint256 maxToSpend = getMaxToSpend(
             targetAmount,
-            availableToSpend,
-            data.maxSpend
+            Math.min(availableToSpend, data.maxSpend)
         );
-        uint256 startingBalance = ERC20(data.destinationAsset).balanceOf(
+        uint256 startingBalance = IERC20(data.destinationAsset).balanceOf(
             address(this)
         );
         CurveFi curveFi = CurveFi(data.curveFi);
@@ -85,37 +80,22 @@ contract CurveFiHandler is ExchangeHandler, AllowanceSetter {
                 1
             );
         }
-        uint256 endingBalance = ERC20(data.destinationAsset).balanceOf(
+        uint256 endingBalance = IERC20(data.destinationAsset).balanceOf(
             address(this)
         );
         amountSpentOnOrder = maxToSpend;
         if (amountSpentOnOrder < availableToSpend) {
-            require(
-                ERC20SafeTransfer.safeTransfer(
-                    data.sourceAsset,
-                    msg.sender,
-                    availableToSpend - amountSpentOnOrder
-                ),
-                "Token transfer failed"
+            SafeERC20.safeTransfer(
+                IERC20(data.sourceAsset),
+                msg.sender,
+                availableToSpend - amountSpentOnOrder
             );
         }
         amountReceivedFromOrder = endingBalance - startingBalance;
-        require(
-            ERC20SafeTransfer.safeTransfer(
-                data.destinationAsset,
-                msg.sender,
-                amountReceivedFromOrder
-            ),
-            "Token transfer failed"
+        SafeERC20.safeTransfer(
+            IERC20(data.destinationAsset),
+            msg.sender,
+            amountReceivedFromOrder
         );
-    }
-
-    function getMaxToSpend(
-        uint256 targetAmount,
-        uint256 availableToSpend,
-        uint256 maxOrderSpend
-    ) internal returns (uint256 max) {
-        return
-            Math.min(Math.min(availableToSpend, targetAmount), maxOrderSpend);
     }
 }

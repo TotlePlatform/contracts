@@ -1,0 +1,14 @@
+# Dependency directory
+node_modules
+
+# Generated files
+dist
+
+package-lock.json
+coverage
+coverage.json
+
+.secret
+.idea
+# Ignore docs for now
+docs

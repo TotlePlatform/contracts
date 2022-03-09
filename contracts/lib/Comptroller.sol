@@ -1,6 +1,7 @@
-pragma solidity 0.5.7;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
-contract Comptroller {
+interface Comptroller {
     struct Market {
         /**
          * @notice Whether or not this market is listed

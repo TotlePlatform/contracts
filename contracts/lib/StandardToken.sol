@@ -1,25 +1,15 @@
-pragma solidity 0.5.7;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
-import "./SafeMath.sol";
 
-
-contract ERC20 {
-  function allowance(address owner, address spender) public view returns (uint256);
-  function transferFrom(address from, address to, uint256 value) public returns (bool);
-  function approve(address spender, uint256 value) public returns (bool);
-  function totalSupply() public view returns (uint256);
-  function balanceOf(address who) public view returns (uint256);
-  function transfer(address to, uint256 value) public returns (bool);
-  event Transfer(address indexed from, address indexed to, uint256 value);
-
-  event Approval(address indexed owner, address indexed spender, uint256 value);
-}
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title Basic token
  * @dev Basic version of StandardToken, with no allowances.
  */
-contract BasicToken is ERC20 {
+abstract contract BasicToken is IERC20 {
   using SafeMath for uint256;
 
   mapping(address => uint256) balances;
@@ -29,7 +19,7 @@ contract BasicToken is ERC20 {
   /**
   * @dev total number of tokens in existence
   */
-  function totalSupply() public view returns (uint256) {
+  function totalSupply() override public view returns (uint256) {
     return totalSupply_;
   }
 
@@ -38,8 +28,7 @@ contract BasicToken is ERC20 {
   * @param _to The address to transfer to.
   * @param _value The amount to be transferred.
   */
-  function transfer(address _to, uint256 _value) public returns (bool) {
-    require(_to != address(0));
+  function transfer(address _to, uint256 _value) override public returns (bool) {
     require(_value <= balances[msg.sender]);
 
     // SafeMath.sub will throw if there is not enough balance.
@@ -52,9 +41,9 @@ contract BasicToken is ERC20 {
   /**
   * @dev Gets the balance of the specified address.
   * @param _owner The address to query the the balance of.
-  * @return An uint256 representing the amount owned by the passed address.
+  * @return balance An uint256 representing the amount owned by the passed address.
   */
-  function balanceOf(address _owner) public view returns (uint256 balance) {
+  function balanceOf(address _owner) override public view returns (uint256 balance) {
     return balances[_owner];
   }
 
@@ -69,11 +58,12 @@ contract BasicToken is ERC20 {
  * @dev Based on code by FirstBlood: https://github.com/Firstbloodio/token/blob/master/smart_contract/FirstBloodToken.sol
  */
 contract StandardToken is BasicToken {
+  using SafeMath for uint256;
   uint256 public decimals = 10;
 
-  constructor(address user1, address user2) public {
-    balances[user1] = uint256(-1)/2;
-    balances[user2] = uint256(-1)/2;
+  constructor(address user1, address user2) {
+    balances[user1] = type(uint256).max/2;
+    balances[user2] = type(uint256).max/2;
   }
 
   mapping (address => mapping (address => uint256)) internal allowed;
@@ -86,7 +76,6 @@ contract StandardToken is BasicToken {
    * @param _value uint256 the amount of tokens to be transferred
    */
   function transferFrom(address _from, address _to, uint256 _value) public returns (bool){
-    require(_to != address(0));
     require(_value <= balances[_from]);
     require(_value <= allowed[_from][msg.sender]);
 

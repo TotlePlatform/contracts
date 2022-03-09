@@ -1,10 +1,8 @@
-pragma solidity 0.5.7;
-pragma experimental ABIEncoderV2;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
 import "../lib/AllowanceSetter.sol";
 import "../lib/Utils.sol";
-import "../lib/Math.sol";
-import "../lib/SafeMath.sol";
 import "./ExchangeHandler.sol";
 
 /// @title OasisInterface
@@ -49,8 +47,6 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
     /// @param oasisAddress the address of the Oasis exchange contract
     /// @param wethAddress the address of the weth contract
     constructor(address oasisAddress, address wethAddress)
-        public
-    /* , address logger */
     {
         oasis = OasisInterface(oasisAddress);
         weth = WethInterface(wethAddress);
@@ -59,10 +55,10 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
     function performOrder(
         bytes memory genericPayload,
         uint256 availableToSpend,
-        uint256 targetAmount,
-        bool targetAmountIsSource
+        uint256 targetAmount
     )
         public
+        override
         payable
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
@@ -78,10 +74,10 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
         //Exit if we can't buy any
         if (amountToSpend == 0) {
             if (data.sourceAsset == Utils.eth_address()) {
-                msg.sender.transfer(availableToSpend);
+                payable(msg.sender).transfer(availableToSpend);
             } else {
-                ERC20SafeTransfer.safeTransfer(
-                    data.sourceAsset,
+                SafeERC20.safeTransfer(
+                    IERC20(data.sourceAsset),
                     msg.sender,
                     availableToSpend
                 );
@@ -90,7 +86,7 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
         }
 
         if (data.sourceAsset == address(Utils.eth_address())) {
-            weth.deposit.value(availableToSpend)();
+            weth.deposit{value:availableToSpend}();
         }
 
         approveAddress(
@@ -115,10 +111,10 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
         if (amountSpentOnOrder < availableToSpend) {
             if (data.sourceAsset == address(Utils.eth_address())) {
                 weth.withdraw(availableToSpend - amountSpentOnOrder);
-                msg.sender.transfer(availableToSpend - amountSpentOnOrder);
+                payable(msg.sender).transfer(availableToSpend - amountSpentOnOrder);
             } else {
-                ERC20SafeTransfer.safeTransfer(
-                    data.sourceAsset,
+                SafeERC20.safeTransfer(
+                    IERC20(data.sourceAsset),
                     msg.sender,
                     availableToSpend - amountSpentOnOrder
                 );
@@ -128,10 +124,10 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
         //Send the purchased tokens back to totlePrimary
         if (data.destinationAsset == Utils.eth_address()) {
             weth.withdraw(amountReceivedFromOrder);
-            msg.sender.transfer(amountReceivedFromOrder);
+            payable(msg.sender).transfer(amountReceivedFromOrder);
         } else {
-            ERC20SafeTransfer.safeTransfer(
-                data.destinationAsset,
+            SafeERC20.safeTransfer(
+                IERC20(data.destinationAsset),
                 msg.sender,
                 amountReceivedFromOrder
             );
@@ -149,12 +145,4 @@ contract OasisHandler is ExchangeHandler, AllowanceSetter {
     function setOasis(address oasisAddress) public onlyOwner {
         oasis = OasisInterface(oasisAddress);
     }
-
-    /*
-     *   Payable fallback function
-     */
-
-    /// @notice payable fallback to allow handler or exchange contracts to return ether
-    /// @dev only accounts containing code (ie. contracts) can send ether to this contract
-    function() external payable {}
 }

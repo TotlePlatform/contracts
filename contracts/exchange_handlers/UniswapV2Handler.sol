@@ -1,8 +1,6 @@
-pragma solidity 0.5.7;
-pragma experimental ABIEncoderV2;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.9;
 
-import "../lib/SafeMath.sol";
-import "../lib/Math.sol";
 import "../lib/Utils.sol";
 import "../lib/AllowanceSetter.sol";
 import "./ExchangeHandler.sol";
@@ -16,7 +14,6 @@ interface IUniswapV2Factory {
         returns (address pair);
 }
 
-
 interface IUniswapV2Pair {
     function swap(
         uint256 amount0Out,
@@ -28,9 +25,12 @@ interface IUniswapV2Pair {
     function getReserves()
         external
         view
-        returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+        returns (
+            uint112 reserve0,
+            uint112 reserve1,
+            uint32 blockTimestampLast
+        );
 }
-
 
 /// @title UniswapV2Handler
 /// @notice Handles the all ZeroExExchange trades for the primary contract
@@ -39,16 +39,15 @@ contract UniswapV2Handler is ExchangeHandler, AllowanceSetter {
      *   State Variables
      */
     WETH constant weth = WETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    IUniswapV2Factory constant factory = IUniswapV2Factory(
-        0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
-    );
+    IUniswapV2Factory constant factory =
+        IUniswapV2Factory(0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f);
 
     /*
      *   Types
      */
 
     /// @notice Constructor
-    constructor() public {}
+    constructor() {}
 
     struct OrderData {
         address sourceAsset;
@@ -60,38 +59,26 @@ contract UniswapV2Handler is ExchangeHandler, AllowanceSetter {
      *   Public functions
      */
 
-    /*
-     *   Internal functions
-     */
-
-    function getMaxToSpend(
-        uint256 targetAmount,
-        uint256 availableToSpend,
-        uint256 maxOrderSpend
-    ) internal returns (uint256 max) {
-        max = Math.min(Math.min(availableToSpend, targetAmount), maxOrderSpend);
-        return max;
-    }
 
     function performOrder(
         bytes memory genericPayload,
         uint256 availableToSpend,
-        uint256 targetAmount,
-        bool targetAmountIsSource
+        uint256 targetAmount
     )
         public
         payable
+        override
         returns (uint256 amountSpentOnOrder, uint256 amountReceivedFromOrder)
     {
         OrderData memory data = abi.decode(genericPayload, (OrderData));
 
         amountSpentOnOrder = getMaxToSpend(
             targetAmount,
-            availableToSpend,
-            data.maxOrderSpend
+            Math.min(availableToSpend,
+            data.maxOrderSpend)
         );
         if (data.sourceAsset == address(weth)) {
-            weth.deposit.value(amountSpentOnOrder)();
+            weth.deposit{value: amountSpentOnOrder}();
         }
         if (amountSpentOnOrder > 0) {
             amountReceivedFromOrder = swap(
@@ -103,10 +90,12 @@ contract UniswapV2Handler is ExchangeHandler, AllowanceSetter {
 
         if (amountSpentOnOrder < availableToSpend) {
             if (data.sourceAsset == address(weth)) {
-                msg.sender.transfer(availableToSpend - amountSpentOnOrder);
+                payable(msg.sender).transfer(
+                    availableToSpend - amountSpentOnOrder
+                );
             } else {
-                ERC20SafeTransfer.safeTransfer(
-                    data.sourceAsset,
+                SafeERC20.safeTransfer(
+                    IERC20(data.sourceAsset),
                     msg.sender,
                     availableToSpend - amountSpentOnOrder
                 );
@@ -115,20 +104,26 @@ contract UniswapV2Handler is ExchangeHandler, AllowanceSetter {
 
         if (data.destinationAsset == address(weth)) {
             weth.withdraw(amountReceivedFromOrder);
-            msg.sender.transfer(amountReceivedFromOrder);
+            payable(msg.sender).transfer(amountReceivedFromOrder);
         } else {
-            ERC20SafeTransfer.safeTransfer(
-                data.destinationAsset,
+            SafeERC20.safeTransfer(
+                IERC20(data.destinationAsset),
                 msg.sender,
                 amountReceivedFromOrder
             );
         }
     }
 
-    function swap(uint256 amount, address sourceToken, address destinationToken)
-        private
-        returns (uint256 output)
-    {
+
+    /*
+     *   Internal functions
+     */
+
+    function swap(
+        uint256 amount,
+        address sourceToken,
+        address destinationToken
+    ) internal returns (uint256 output) {
         // Sort the tokens. This is used for getting reserves
         (address token0, address token1) = sourceToken < destinationToken
             ? (sourceToken, destinationToken)
@@ -137,13 +132,17 @@ contract UniswapV2Handler is ExchangeHandler, AllowanceSetter {
         // Get the pair contract
         IUniswapV2Pair pair = IUniswapV2Pair(
             address(
-                uint256(
-                    keccak256(
-                        abi.encodePacked(
-                            hex"ff",
-                            factory,
-                            keccak256(abi.encodePacked(token0, token1)),
-                            hex"96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f" // init code hash
+                bytes20(
+                    uint160(
+                        uint256(
+                            keccak256(
+                                abi.encodePacked(
+                                    hex"ff",
+                                    factory,
+                                    keccak256(abi.encodePacked(token0, token1)),
+                                    hex"96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f" // init code hash
+                                )
+                            )
                         )
                     )
                 )
@@ -159,7 +158,7 @@ contract UniswapV2Handler is ExchangeHandler, AllowanceSetter {
         // Get the output amount using the source amount, source reserve, and destination reserve
         output = getAmountOut(amount, sourceReserve, destinationReserve);
         // Transfer the source tokens to the pair contract
-        ERC20SafeTransfer.safeTransfer(sourceToken, address(pair), amount);
+        SafeERC20.safeTransfer(IERC20(sourceToken), address(pair), amount);
         // Call swap
         pair.swap(
             destinationToken == token0 ? output : 0,
@@ -180,6 +179,8 @@ contract UniswapV2Handler is ExchangeHandler, AllowanceSetter {
         uint256 reserveIn,
         uint256 reserveOut
     ) internal pure returns (uint256 amountOut) {
+        require(amountIn > 0, "insufficient input amount");
+        require(reserveIn > 0 && reserveOut > 0, "insufficient reserve");
         uint256 amountInWithFee = SafeMath.mul(amountIn, 997);
         uint256 numerator = SafeMath.mul(amountInWithFee, reserveOut);
         uint256 denominator = SafeMath.add(
@@ -188,10 +189,4 @@ contract UniswapV2Handler is ExchangeHandler, AllowanceSetter {
         );
         amountOut = numerator / denominator;
     }
-
-    /*
-     *   Payable fallback function
-     */
-
-    function() external payable {}
 }
